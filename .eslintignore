@@ -1,0 +1,6 @@
+node_modules/
+.next/
+src/app/components/AudioUploader.tsx
+src/app/page.tsx
+src/app/api/transcribe/route.ts
+src/app/api/generate-notes/route.ts 

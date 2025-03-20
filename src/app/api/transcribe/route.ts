@@ -119,11 +119,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         transcript: processedSegments
       });
-    } catch (openaiError: any) {
+    } catch (openaiError: unknown) {
       console.error('OpenAI API error:', openaiError);
       
       // Handle specific OpenAI API errors
-      if (openaiError.status === 413) {
+      if (typeof openaiError === 'object' && openaiError !== null && 'status' in openaiError && (openaiError as any).status === 413) {
         return NextResponse.json(
           { 
             error: 'The audio file is too large for the OpenAI API.',

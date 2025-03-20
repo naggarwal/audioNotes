@@ -51,6 +51,7 @@ export default function AudioUploader({ onFileUpload, isLoading }: AudioUploader
     if (!isLoading && nextSegmentRef.current <= totalSegments && nextSegmentRef.current > 1) {
       processNextSegment();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading, waitingForTranscription, totalSegments]);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
@@ -216,7 +217,7 @@ export default function AudioUploader({ onFileUpload, isLoading }: AudioUploader
     }
   };
 
-  // Expose the onTranscriptionComplete method to parent
+  // Set up global callback for when transcription is complete
   useEffect(() => {
     if (typeof window !== 'undefined') {
       (window as any).onTranscriptionComplete = onTranscriptionComplete;
@@ -227,6 +228,7 @@ export default function AudioUploader({ onFileUpload, isLoading }: AudioUploader
         delete (window as any).onTranscriptionComplete;
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
