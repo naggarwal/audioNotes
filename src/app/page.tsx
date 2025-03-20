@@ -149,7 +149,7 @@ export default function Home() {
     }
   };
 
-  const handleGenerateNotes = async () => {
+  const handleGenerateNotes = async (additionalInstructions: string = '') => {
     try {
       console.log('handleGenerateNotes called');
       setIsGeneratingNotes(true);
@@ -166,7 +166,10 @@ export default function Home() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ transcript: formattedTranscript }),
+        body: JSON.stringify({ 
+          transcript: formattedTranscript,
+          additionalInstructions: additionalInstructions
+        }),
       });
 
       console.log('Response received:', {
