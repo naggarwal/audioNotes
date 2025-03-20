@@ -2,6 +2,7 @@
 
 .env.local
 
+.m4a
 
 # dependencies
 /node_modules
