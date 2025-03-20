@@ -9,7 +9,7 @@ interface TranscriptSegment {
   text: string;
   startTime: number;
   endTime: number;
-}
+} 
 
 interface Notes {
   summary: string;
