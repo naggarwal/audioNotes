@@ -48,7 +48,7 @@ export default function TranscriptDisplay({
               Generating Notes...
             </span>
           ) : (
-            'Generate Meeting Notes'
+            'Generate Meeting Notes from Transcript'
           )}
         </button>
       </div>
