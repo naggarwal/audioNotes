@@ -6,6 +6,7 @@ interface TranscriptSegment {
   text: string;
   startTime: number;
   endTime: number;
+  speaker?: string;
 }
 
 interface TranscriptDisplayProps {
@@ -83,6 +84,11 @@ export default function TranscriptDisplay({
               </div>
             </div>
             <div className="flex-1">
+              {segment.speaker && (
+                <div className="font-semibold text-blue-600 dark:text-blue-400 mb-1">
+                  {segment.speaker}
+                </div>
+              )}
               <p className="text-gray-800 dark:text-gray-200">{segment.text}</p>
             </div>
           </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import AudioUploader from './components/AudioUploader';
 import TranscriptDisplay from './components/TranscriptDisplay';
 import MeetingNotes from './components/MeetingNotes';
@@ -9,6 +9,7 @@ interface TranscriptSegment {
   text: string;
   startTime: number;
   endTime: number;
+  speaker?: string;
 } 
 
 interface Notes {
@@ -29,55 +30,20 @@ export default function Home() {
   const [transcript, setTranscript] = useState<TranscriptSegment[]>([]);
   const [notes, setNotes] = useState<Notes | null>(null);
   const [error, setError] = useState<ErrorWithSuggestion | null>(null);
-  const [processingMessage, setProcessingMessage] = useState<string | null>(null);
-  const [currentSegment, setCurrentSegment] = useState(0);
-  const [totalSegments, setTotalSegments] = useState(0);
 
-  // Notify the AudioUploader component when transcription is complete
-  useEffect(() => {
-    if (!isTranscribing && (window as any).onTranscriptionComplete) {
-      console.log('Notifying AudioUploader that transcription is complete');
-      (window as any).onTranscriptionComplete();
-    }
-  }, [isTranscribing]);
-
-  const handleFileUpload = async (file: File, isLastSegment: boolean) => {
+  const handleFileUpload = async (file: File) => {
     try {
       console.log('handleFileUpload called with file:', {
         name: file.name,
         type: file.type,
         size: file.size,
-        sizeInMB: (file.size / 1024 / 1024).toFixed(2) + ' MB',
-        isLastSegment
+        sizeInMB: (file.size / 1024 / 1024).toFixed(2) + ' MB'
       });
-      
-      // Check if this is a segment file
-      const isSegment = file.name.includes('segment_');
-      
-      if (isSegment) {
-        // Extract segment information from filename
-        const segmentMatch = file.name.match(/segment_(\d+)_of_(\d+)/);
-        if (segmentMatch) {
-          const segmentNumber = parseInt(segmentMatch[1]);
-          const totalSegmentsCount = parseInt(segmentMatch[2]);
-          setCurrentSegment(segmentNumber);
-          setTotalSegments(totalSegmentsCount);
-          setProcessingMessage(`Processing segment ${segmentNumber} of ${totalSegmentsCount}`);
-        }
-      } else {
-        setProcessingMessage(null);
-        setCurrentSegment(0);
-        setTotalSegments(0);
-      }
       
       setIsTranscribing(true);
       setError(null);
-      
-      // Only clear transcript for first segment or non-segmented files
-      if (!isSegment || file.name.includes('segment_1_of_')) {
-        setTranscript([]);
-        setNotes(null);
-      }
+      setTranscript([]);
+      setNotes(null);
 
       const formData = new FormData();
       formData.append('file', file);
@@ -113,102 +79,121 @@ export default function Home() {
       }
 
       console.log('Transcription successful:', {
-        segmentsCount: data.transcript.length,
-        currentSegment,
-        totalSegments,
-        isLastSegment
+        segmentsCount: data.transcript.length
       });
       
-      // For segmented files, append the new transcript to the existing one
-      if (isSegment && transcript.length > 0) {
-        // Calculate time offset based on the last segment's end time
-        const lastEndTime = transcript[transcript.length - 1].endTime;
-        
-        // Adjust timestamps for the new segments
-        const adjustedNewSegments = data.transcript.map((segment: TranscriptSegment) => ({
-          ...segment,
-          startTime: segment.startTime + lastEndTime,
-          endTime: segment.endTime + lastEndTime
-        }));
-        
-        setTranscript([...transcript, ...adjustedNewSegments]);
-      } else {
-        setTranscript(data.transcript);
-      }
+      // If the transcript doesn't have speaker information, add default speakers
+      let enhancedTranscript = data.transcript.map((segment: TranscriptSegment, index: number) => {
+        if (!segment.speaker) {
+          // Alternate between Speaker 1 and Speaker 2 if no speaker info
+          return {
+            ...segment,
+            speaker: `Speaker ${Math.floor(index / 3) % 2 + 1}`
+          };
+        }
+        return segment;
+      });
       
-      // Clear processing message after successful transcription
-      setProcessingMessage(null);
+      // Combine consecutive segments from the same speaker
+      enhancedTranscript = combineConsecutiveSegments(enhancedTranscript);
+      
+      setTranscript(enhancedTranscript);
     } catch (err: any) {
       console.error('Error in handleFileUpload:', err);
       setError({
-        message: err instanceof Error ? err.message : 'An unknown error occurred',
-        suggestion: undefined
+        message: err.message || 'Failed to transcribe audio',
+        suggestion: 'Please try again with a different file'
       });
     } finally {
       setIsTranscribing(false);
     }
   };
 
+  // Function to combine consecutive segments from the same speaker
+  const combineConsecutiveSegments = (segments: TranscriptSegment[]): TranscriptSegment[] => {
+    if (!segments.length) return [];
+    
+    const combinedSegments: TranscriptSegment[] = [];
+    let currentSegment = { ...segments[0] };
+    
+    for (let i = 1; i < segments.length; i++) {
+      const nextSegment = segments[i];
+      
+      // If the same speaker, combine the text and update the end time
+      if (nextSegment.speaker === currentSegment.speaker) {
+        currentSegment.text += ' ' + nextSegment.text;
+        currentSegment.endTime = nextSegment.endTime;
+      } else {
+        // Different speaker, push current segment and start a new one
+        combinedSegments.push(currentSegment);
+        currentSegment = { ...nextSegment };
+      }
+    }
+    
+    // Don't forget to add the last segment
+    combinedSegments.push(currentSegment);
+    
+    return combinedSegments;
+  };
+
   const handleGenerateNotes = async (additionalInstructions: string = '') => {
     try {
-      console.log('handleGenerateNotes called');
+      if (transcript.length === 0) {
+        setError({
+          message: 'No transcript available',
+          suggestion: 'Please upload and transcribe an audio file first'
+        });
+        return;
+      }
+      
       setIsGeneratingNotes(true);
       setError(null);
-
-      // Format the transcript for the AI to process
-      const formattedTranscript = transcript.map(segment => {
-        return `(${formatTime(segment.startTime)}): ${segment.text}`;
+      
+      // Convert transcript segments to text
+      const transcriptText = transcript.map((segment, index) => {
+        // Format speaker information if available
+        const speakerPrefix = segment.speaker 
+          ? `${segment.speaker}: ` 
+          : `Speaker ${Math.floor(index / 3) % 2 + 1}: `; // Alternate speakers if not provided
+          
+        return `${speakerPrefix}${segment.text}`;
       }).join('\n\n');
+      
+      console.log('Sending transcript for notes generation:', {
+        transcriptLength: transcriptText.length,
+        segmentsCount: transcript.length
+      });
 
-      console.log('Sending POST request to /api/generate-notes');
       const response = await fetch('/api/generate-notes', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ 
-          transcript: formattedTranscript,
-          additionalInstructions: additionalInstructions
+          transcript: transcriptText,
+          additionalInstructions 
         }),
       });
 
-      console.log('Response received:', {
-        status: response.status,
-        statusText: response.statusText,
-        ok: response.ok
-      });
-      
-      const data = await response.json();
-      console.log('Response data:', data);
-
       if (!response.ok) {
-        if (data && typeof data === 'object') {
-          console.error('API error response:', {
-            status: response.status,
-            error: data.error,
-            suggestion: data.suggestion
-          });
-          
-          setError({
-            message: data.error || 'Failed to generate meeting notes',
-            suggestion: data.suggestion
-          });
-        } else {
-          setError({
-            message: 'Failed to generate meeting notes',
-            suggestion: 'An unexpected error occurred'
-          });
-        }
-        return;
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to generate notes');
       }
 
-      console.log('Notes generation successful');
-      setNotes(data);
+      const data = await response.json();
+      console.log('Notes generated:', data);
+      
+      setNotes({
+        summary: data.summary,
+        keyPoints: data.keyPoints,
+        actionItems: data.actionItems,
+        decisions: data.decisions
+      });
     } catch (err: any) {
       console.error('Error in handleGenerateNotes:', err);
       setError({
-        message: err instanceof Error ? err.message : 'An unknown error occurred',
-        suggestion: undefined
+        message: err.message || 'Failed to generate notes',
+        suggestion: 'Please try again or check your transcript'
       });
     } finally {
       setIsGeneratingNotes(false);
@@ -258,25 +243,12 @@ export default function Home() {
             </div>
           )}
 
-          {(isTranscribing || processingMessage) && (
+          {(isTranscribing) && (
             <div className="w-full max-w-2xl mx-auto text-center py-12">
               <div className="inline-block animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
               <p className="mt-4 text-gray-600 dark:text-gray-400">
-                {processingMessage || 'Transcribing your audio file...'}
+                {'Transcribing your audio file...'}
               </p>
-              {currentSegment > 0 && totalSegments > 0 && (
-                <div className="mt-2">
-                  <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
-                    <div 
-                      className="bg-blue-600 h-2.5 rounded-full" 
-                      style={{ width: `${(currentSegment / totalSegments) * 100}%` }}
-                    ></div>
-                  </div>
-                  <p className="mt-2 text-sm text-gray-500 dark:text-gray-500">
-                    Segment {currentSegment} of {totalSegments}
-                  </p>
-                </div>
-              )}
             </div>
           )}
 
