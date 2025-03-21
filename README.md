@@ -8,17 +8,26 @@ A Next.js application that transcribes audio meeting files, identifies different
 - Transcribe audio with speaker identification using Deepgram
 - Generate meeting notes from transcriptions using OpenAI
 - View and download results
+- Support for large file uploads via Vercel Blob
+- Configurable upload modes (direct, blob, or auto)
 
 ## Prerequisites
 
 - Node.js 18.x or later
 - npm or yarn
+- Vercel account (for Vercel Blob storage)
 
 ## Getting Started
 
 1. Clone the repository
 2. Install dependencies with `npm install`
-3. Create a `.env.local` file with the following:
+3. Create a Blob store in the Vercel dashboard:
+   - Go to your Vercel project
+   - Select the Storage tab
+   - Click "Connect Database"
+   - Select "Blob" and click "Continue"
+   - Name your store "AudioFiles" and click "Create"
+4. Create a `.env.local` file with the following:
    ```
    # OpenAI API Key (for meeting notes generation)
    OPENAI_API_KEY=your_openai_api_key_here
@@ -28,12 +37,18 @@ A Next.js application that transcribes audio meeting files, identifies different
    
    # OpenAI model to use for notes generation
    OPENAI_MODEL=gpt-4o
+   
+   # Vercel Blob token (from your Vercel dashboard)
+   BLOB_READ_WRITE_TOKEN=your_vercel_blob_token_here
+   
+   # Upload mode: direct, blob, or auto
+   UPLOAD_MODE=auto
    ```
-4. Run the development server:
+5. Run the development server:
    ```bash
    npm run dev
    ```
-5. Open [http://localhost:3000](http://localhost:3000) in your browser
+6. Open [http://localhost:3000](http://localhost:3000) in your browser
 
 ## Transcription Options
 
@@ -46,23 +61,39 @@ This application supports two transcription services:
 
 - Set `USE_DEEPGRAM=true` in your `.env.local` file to use Deepgram for transcription (recommended)
 - Set `USE_DEEPGRAM=false` to use OpenAI Whisper instead
+- Set `BLOB_READ_WRITE_TOKEN` to your Vercel Blob token for handling large file uploads
+- Configure `UPLOAD_MODE` to control how files are handled:
+  - `direct`: Always use direct server upload (not recommended for Vercel deployment with large files)
+  - `blob`: Always use Vercel Blob storage (requires BLOB_READ_WRITE_TOKEN)
+  - `auto`: Automatically use direct uploads for files under 4MB and Blob for larger files (default)
 
 ## How to Use
 
 1. Upload an audio file of your meeting
-2. Wait for the transcription to complete
-3. Review the transcript with identified speakers
-4. (Optional) Edit speaker names by clicking on them
-5. Click "Generate Meeting Notes" to create a summary of the meeting
-6. View the generated notes with summary, key points, action items, and decisions
+2. Depending on your UPLOAD_MODE setting and file size, it will be uploaded directly or via Vercel Blob
+3. Wait for the transcription to complete
+4. Review the transcript with identified speakers
+5. (Optional) Edit speaker names by clicking on them
+6. Click "Generate Meeting Notes" to create a summary of the meeting
+7. View the generated notes with summary, key points, action items, and decisions
 
 ## Technical Details
 
 - Built with Next.js and TypeScript
 - Uses Deepgram for audio transcription with speaker diarization
 - Uses OpenAI's GPT-4 for meeting notes generation
+- Uses Vercel Blob for large file uploads (bypassing Vercel's 4.5MB API limit)
 - Styled with Tailwind CSS
 - Uses React Dropzone for file uploads
+
+## Deployment on Vercel
+
+When deploying to Vercel, make sure to:
+
+1. Create a Blob store in your Vercel project's Storage tab
+2. Add the `BLOB_READ_WRITE_TOKEN` to your project's Environment Variables
+3. Set up all other environment variables (API keys, etc.)
+4. Set `UPLOAD_MODE=auto` or `UPLOAD_MODE=blob` to handle large files properly (Vercel has a 4.5MB API limit)
 
 ## Limitations
 

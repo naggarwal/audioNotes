@@ -4,6 +4,8 @@ import { NextRequest, NextResponse } from 'next/server';
 
 // Import OpenAI for Whisper fallback
 import { OpenAI } from 'openai';
+// Import from Vercel Blob to fetch uploaded files - temporarily commenting out until we can fix import
+// import { list, get, del } from '@vercel/blob';
 
 // Check which transcription service to use
 const USE_DEEPGRAM = process.env.USE_DEEPGRAM === 'true';
@@ -12,6 +14,18 @@ const USE_DEEPGRAM = process.env.USE_DEEPGRAM === 'true';
 const openai = USE_DEEPGRAM ? null : new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
+
+// Supported audio content types
+const SUPPORTED_AUDIO_TYPES = [
+  'audio/mpeg', // MP3
+  'audio/wav',  // WAV
+  'audio/m4a',  // M4A
+  'audio/x-m4a', // M4A (alternative MIME type)
+  'audio/aac',  // AAC
+  'audio/ogg',  // OGG
+  'audio/mp4',  // MP4 audio
+  'audio/x-mp4', // MP4 audio (alternative MIME type)
+];
 
 // Define types for Deepgram response
 interface DeepgramWord {
@@ -70,78 +84,135 @@ export async function POST(request: NextRequest) {
     // Set max file size based on the service being used
     const MAX_FILE_SIZE = USE_DEEPGRAM ? MAX_FILE_SIZE_DEEPGRAM : MAX_FILE_SIZE_WHISPER;
     
-    // Check content length header first to avoid processing very large files
-    const contentLength = request.headers.get('content-length');
-    console.log('Content-Length header:', {
-      contentLength,
-      contentLengthInMB: contentLength ? (parseInt(contentLength) / 1024 / 1024).toFixed(2) + ' MB' : 'N/A'
-    });
-    
-    if (contentLength && parseInt(contentLength) > MAX_FILE_SIZE) {
-      console.log('Content-Length exceeds limit:', {
-        contentLength: parseInt(contentLength),
-        maxSize: MAX_FILE_SIZE,
-        contentLengthInMB: (parseInt(contentLength) / 1024 / 1024).toFixed(2) + ' MB',
-        maxSizeInMB: (MAX_FILE_SIZE / 1024 / 1024).toFixed(2) + ' MB'
-      });
-      
-      return NextResponse.json(
-        { 
-          error: `File size (${(parseInt(contentLength) / 1024 / 1024).toFixed(2)} MB) exceeds the limit of ${USE_DEEPGRAM ? '250MB' : '25MB'}.`,
-          suggestion: 'Please use a smaller audio file or try a different format.'
-        },
-        { status: 413 }
-      );
-    }
-
     console.log('Parsing form data...');
     const formData = await request.formData();
-    const audioFile = formData.get('file') as File;
-
-    if (!audioFile) {
-      console.log('No audio file provided');
-      return NextResponse.json(
-        { error: 'No audio file provided' },
-        { status: 400 }
-      );
-    }
-
-    console.log('Audio file received:', {
-      name: audioFile.name,
-      type: audioFile.type,
-      size: audioFile.size,
-      sizeInMB: (audioFile.size / 1024 / 1024).toFixed(2) + ' MB'
-    });
-
-    // Check file size on the server side as well
-    if (audioFile.size > MAX_FILE_SIZE) {
-      console.log('File size exceeds limit:', {
-        fileSize: audioFile.size,
-        maxSize: MAX_FILE_SIZE,
-        fileSizeInMB: (audioFile.size / 1024 / 1024).toFixed(2) + ' MB',
-        maxSizeInMB: (MAX_FILE_SIZE / 1024 / 1024).toFixed(2) + ' MB'
+    
+    // Check if we're receiving a blob URL or a direct file upload
+    const blobUrl = formData.get('blobUrl') as string;
+    
+    let buffer: Buffer;
+    let fileName: string;
+    let fileType: string;
+    let fileSize: number;
+    
+    if (blobUrl) {
+      console.log('Blob URL received:', blobUrl);
+      fileName = formData.get('fileName') as string;
+      
+      // Fetch the blob directly using fetch API instead of Vercel Blob SDK
+      try {
+        const response = await fetch(blobUrl);
+        if (!response.ok) {
+          return NextResponse.json(
+            { error: 'Failed to fetch file from Blob storage' },
+            { status: 500 }
+          );
+        }
+        
+        console.log('Blob fetched successfully:', {
+          contentType: response.headers.get('content-type'),
+          contentLength: response.headers.get('content-length'),
+          status: response.status
+        });
+        
+        fileType = response.headers.get('content-type') || 'audio/mpeg';
+        fileSize = parseInt(response.headers.get('content-length') || '0');
+        
+        const arrayBuffer = await response.arrayBuffer();
+        buffer = Buffer.from(arrayBuffer);
+        
+        console.log('Buffer created from blob, size:', buffer.length);
+      } catch (error) {
+        console.error('Error fetching from blob URL:', error);
+        return NextResponse.json(
+          { error: 'Failed to fetch file from Blob URL' },
+          { status: 500 }
+        );
+      }
+    } else {
+      // Handle direct file upload case (for smaller files or local development)
+      const audioFile = formData.get('file') as File;
+      
+      if (!audioFile) {
+        console.log('No audio file provided');
+        return NextResponse.json(
+          { error: 'No audio file provided' },
+          { status: 400 }
+        );
+      }
+      
+      console.log('Audio file received:', {
+        name: audioFile.name,
+        type: audioFile.type,
+        size: audioFile.size,
+        sizeInMB: (audioFile.size / 1024 / 1024).toFixed(2) + ' MB'
       });
       
-      return NextResponse.json(
-        { 
-          error: `File size (${(audioFile.size / 1024 / 1024).toFixed(2)} MB) exceeds the limit of ${USE_DEEPGRAM ? '250MB' : '25MB'}.`,
-          suggestion: 'Please use a smaller audio file or try a different format.'
-        },
-        { status: 413 }
-      );
+      fileName = audioFile.name;
+      fileType = audioFile.type;
+      fileSize = audioFile.size;
+
+      // Check content length header first to avoid processing very large files
+      const contentLength = request.headers.get('content-length');
+      console.log('Content-Length header:', {
+        contentLength,
+        contentLengthInMB: contentLength ? (parseInt(contentLength) / 1024 / 1024).toFixed(2) + ' MB' : 'N/A'
+      });
+      
+      if (contentLength && parseInt(contentLength) > MAX_FILE_SIZE) {
+        console.log('Content-Length exceeds limit:', {
+          contentLength: parseInt(contentLength),
+          maxSize: MAX_FILE_SIZE,
+          contentLengthInMB: (parseInt(contentLength) / 1024 / 1024).toFixed(2) + ' MB',
+          maxSizeInMB: (MAX_FILE_SIZE / 1024 / 1024).toFixed(2) + ' MB'
+        });
+        
+        return NextResponse.json(
+          { 
+            error: `File size (${(parseInt(contentLength) / 1024 / 1024).toFixed(2)} MB) exceeds the limit of ${USE_DEEPGRAM ? '250MB' : '25MB'}.`,
+            suggestion: 'Please use a smaller audio file or try a different format.'
+          },
+          { status: 413 }
+        );
+      }
+      
+      // Check file size on the server side as well
+      if (audioFile.size > MAX_FILE_SIZE) {
+        console.log('File size exceeds limit:', {
+          fileSize: audioFile.size,
+          maxSize: MAX_FILE_SIZE,
+          fileSizeInMB: (audioFile.size / 1024 / 1024).toFixed(2) + ' MB',
+          maxSizeInMB: (MAX_FILE_SIZE / 1024 / 1024).toFixed(2) + ' MB'
+        });
+        
+        return NextResponse.json(
+          { 
+            error: `File size (${(audioFile.size / 1024 / 1024).toFixed(2)} MB) exceeds the limit of ${USE_DEEPGRAM ? '250MB' : '25MB'}.`,
+            suggestion: 'Please use a smaller audio file or try a different format.'
+          },
+          { status: 413 }
+        );
+      }
+
+      console.log('Converting file to buffer...');
+      // Convert the file to a Buffer
+      const arrayBuffer = await audioFile.arrayBuffer();
+      buffer = Buffer.from(arrayBuffer);
+      console.log('Buffer created, size:', buffer.length);
     }
 
-    console.log('Converting file to buffer...');
-    // Convert the file to a Buffer
-    const arrayBuffer = await audioFile.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    console.log('Buffer created, size:', buffer.length);
+    // Create a virtual file object for the transcription services
+    const virtualFile = {
+      name: fileName,
+      type: fileType,
+      size: fileSize
+    };
 
     try {
       if (USE_DEEPGRAM) {
-        return await processWithDeepgram(audioFile, buffer);
+        return await processWithDeepgram(virtualFile, buffer);
       } else {
-        return await processWithOpenAI(audioFile, buffer);
+        return await processWithOpenAI(virtualFile, buffer);
       }
     } catch (error: unknown) {
       console.error(`${USE_DEEPGRAM ? 'Deepgram' : 'OpenAI'} API error:`, error);
@@ -172,7 +243,7 @@ export async function POST(request: NextRequest) {
 }
 
 // Function to process audio with Deepgram
-async function processWithDeepgram(audioFile: File, buffer: Buffer) {
+async function processWithDeepgram(audioFile: { name: string, type: string, size: number }, buffer: Buffer) {
   console.log('Calling Deepgram API for transcription...');
   
   // Deepgram API endpoint
@@ -273,7 +344,7 @@ async function processWithDeepgram(audioFile: File, buffer: Buffer) {
 }
 
 // Function to process audio with OpenAI Whisper
-async function processWithOpenAI(audioFile: File, buffer: Buffer) {
+async function processWithOpenAI(audioFile: { name: string, type: string, size: number }, buffer: Buffer) {
   console.log('Calling OpenAI API for transcription...');
   
   if (!openai) {

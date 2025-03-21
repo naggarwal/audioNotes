@@ -31,13 +31,14 @@ export default function Home() {
   const [notes, setNotes] = useState<Notes | null>(null);
   const [error, setError] = useState<ErrorWithSuggestion | null>(null);
 
-  const handleFileUpload = async (file: File) => {
+  const handleFileUpload = async (file: File, blobUrl?: string) => {
     try {
       console.log('handleFileUpload called with file:', {
         name: file.name,
         type: file.type,
         size: file.size,
-        sizeInMB: (file.size / 1024 / 1024).toFixed(2) + ' MB'
+        sizeInMB: (file.size / 1024 / 1024).toFixed(2) + ' MB',
+        blobUrl: blobUrl || 'none'
       });
       
       setIsTranscribing(true);
@@ -46,7 +47,15 @@ export default function Home() {
       setNotes(null);
 
       const formData = new FormData();
-      formData.append('file', file);
+      
+      // If we have a blob URL, send that instead of the file
+      if (blobUrl) {
+        formData.append('blobUrl', blobUrl);
+        formData.append('fileName', file.name);
+      } else {
+        formData.append('file', file);
+      }
+      
       console.log('FormData created, sending to API...');
 
       console.log('Sending POST request to /api/transcribe');

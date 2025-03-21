@@ -2,9 +2,10 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
+import { upload } from '@vercel/blob/client';
 
 interface AudioUploaderProps {
-  onFileUpload: (file: File) => void;
+  onFileUpload: (file: File, blobUrl?: string) => void;
   isLoading: boolean;
 }
 
@@ -12,6 +13,28 @@ export default function AudioUploader({ onFileUpload, isLoading }: AudioUploader
   const [file, setFile] = useState<File | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [processingFile, setProcessingFile] = useState(false);
+  const [splittingFile, setSplittingFile] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [currentSegment, setCurrentSegment] = useState<number | null>(null);
+  const [totalSegments, setTotalSegments] = useState<number | null>(null);
+  const [uploadMode, setUploadMode] = useState<string>('auto'); // Default to auto detection
+
+  // Fetch the upload mode from the server on component mount
+  useEffect(() => {
+    const fetchUploadMode = async () => {
+      try {
+        const response = await fetch('/api/get-config');
+        if (response.ok) {
+          const data = await response.json();
+          setUploadMode(data.uploadMode || 'auto');
+        }
+      } catch (error) {
+        console.error('Failed to fetch upload mode configuration:', error);
+      }
+    };
+
+    fetchUploadMode();
+  }, []);
 
   // Reset the file state when processing is completed
   useEffect(() => {
@@ -19,41 +42,71 @@ export default function AudioUploader({ onFileUpload, isLoading }: AudioUploader
       // When loading is finished, reset the states
       setProcessingFile(false);
       setFile(null);
+      setUploadProgress(0);
     }
   }, [isLoading, processingFile]);
 
-  const onDrop = useCallback((acceptedFiles: File[]) => {
+  const onDrop = useCallback(async (acceptedFiles: File[]) => {
     const uploadedFile = acceptedFiles[0];
     if (uploadedFile) {
       // Reset previous state
       setErrorMessage(null);
+      setUploadProgress(0);
       
       console.log('File dropped:', {
         name: uploadedFile.name,
         type: uploadedFile.type,
         size: uploadedFile.size,
-        sizeInMB: (uploadedFile.size / 1024 / 1024).toFixed(2) + ' MB'
+        sizeInMB: (uploadedFile.size / 1024 / 1024).toFixed(2) + ' MB',
+        uploadMode
       });
       
-      // Set file and upload
+      // Set file
       setFile(uploadedFile);
+      setProcessingFile(true);
       
-      // Upload directly without any splitting
       try {
-        setProcessingFile(true);
-        onFileUpload(uploadedFile);
+        // Decide whether to use Blob upload or direct upload based on config and file size
+        const shouldUseBlobUpload = 
+          uploadMode === 'blob' || 
+          (uploadMode === 'auto' && uploadedFile.size > 4 * 1024 * 1024);
+        
+        if (shouldUseBlobUpload) {
+          console.log('Using Vercel Blob upload (mode:', uploadMode, ')');
+          
+          // Start upload with progress tracking
+          setUploadProgress(0);
+          
+          // Create a unique filename to avoid collisions
+          const fileName = `${Date.now()}-${uploadedFile.name}`;
+          
+          const blobUpload = await upload(fileName, uploadedFile, {
+            access: 'public',
+            handleUploadUrl: '/api/audio-upload',
+          });
+          
+          setUploadProgress(100);
+          console.log('File uploaded to Blob:', blobUpload.url);
+          
+          // Now process the file from the Blob URL
+          onFileUpload(uploadedFile, blobUpload.url);
+        } else {
+          // For direct upload mode or smaller files in auto mode
+          console.log('Using direct upload (mode:', uploadMode, ')');
+          onFileUpload(uploadedFile);
+        }
       } catch (error) {
         console.error('Error processing file:', error);
         setErrorMessage(error instanceof Error ? error.message : 'Failed to process audio file');
         setProcessingFile(false);
       }
     }
-  }, [onFileUpload]);
+  }, [onFileUpload, uploadMode]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
-      'audio/*': ['.mp3', '.wav', '.m4a', '.aac', '.ogg']
+      'audio/*': ['.mp3', '.wav', '.m4a', '.aac', '.ogg', '.mp4']
     },
     maxFiles: 1,
     disabled: isLoading || processingFile
@@ -90,7 +143,7 @@ export default function AudioUploader({ onFileUpload, isLoading }: AudioUploader
                 or click to select a file
               </p>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                Supports MP3, WAV, M4A, AAC, OGG files up to 250MB
+                Supports MP3, WAV, M4A, MP4, AAC, OGG files up to 250MB
               </p>
             </div>
           )}
@@ -98,8 +151,15 @@ export default function AudioUploader({ onFileUpload, isLoading }: AudioUploader
             <div className="mt-4">
               <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
               <p className="mt-2 text-sm text-gray-500">
-                {isLoading ? 'Transcribing...' : 'Processing audio file...'}
+                {isLoading ? 'Transcribing...' : 
+                 uploadProgress > 0 ? `Uploading: ${uploadProgress}%` : 
+                 splittingFile ? 'Splitting audio file...' : 'Processing audio file...'}
               </p>
+              {currentSegment !== null && totalSegments !== null && !splittingFile && (
+                <p className="mt-1 text-xs text-gray-500">
+                  Processing segment {currentSegment} of {totalSegments}
+                </p>
+              )}
             </div>
           )}
         </div>
