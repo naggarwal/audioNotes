@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 
 interface AudioUploaderProps {
@@ -12,6 +12,15 @@ export default function AudioUploader({ onFileUpload, isLoading }: AudioUploader
   const [file, setFile] = useState<File | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [processingFile, setProcessingFile] = useState(false);
+
+  // Reset the file state when processing is completed
+  useEffect(() => {
+    if (!isLoading && processingFile) {
+      // When loading is finished, reset the states
+      setProcessingFile(false);
+      setFile(null);
+    }
+  }, [isLoading, processingFile]);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const uploadedFile = acceptedFiles[0];
