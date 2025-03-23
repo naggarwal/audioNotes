@@ -6,7 +6,8 @@ const path = require('path');
 const migrations = [
   'supabase/migrations/20231022000000_create_recordings_table.sql',
   'supabase/migrations/20240515000000_create_transcriptions_table.sql',
-  'supabase/migrations/20240515000001_update_existing_recordings.sql'
+  'supabase/migrations/20240515000001_update_existing_recordings.sql',
+  'supabase/migrations/20240520000000_create_meeting_notes_table.sql'
 ];
 
 // Supabase API credentials from .env.local

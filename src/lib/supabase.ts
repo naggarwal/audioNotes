@@ -54,6 +54,17 @@ export interface TranscriptSegmentData {
   confidence?: number;
 }
 
+export type MeetingNotes = {
+  id: string;
+  recording_id: string;
+  summary: string | null;
+  key_points: string[] | null;
+  action_items: string[] | null;
+  decisions: string[] | null;
+  created_at: string;
+  updated_at: string;
+};
+
 /**
  * Inserts a new recording into the database
  */
@@ -234,4 +245,64 @@ export async function getTranscriptionByRecordingId(recordingId: string) {
     transcription,
     segments
   };
+}
+
+/**
+ * Creates or updates meeting notes for a recording
+ */
+export async function saveMeetingNotes(
+  recordingId: string, 
+  notes: { 
+    summary: string; 
+    keyPoints: string[]; 
+    actionItems: string[]; 
+    decisions: string[];
+  }
+) {
+  // Check if notes already exist for this recording
+  const { data: existingNotes } = await supabase
+    .from('meeting_notes')
+    .select('id')
+    .eq('recording_id', recordingId)
+    .maybeSingle();
+  
+  if (existingNotes) {
+    // Update existing notes
+    return await supabase
+      .from('meeting_notes')
+      .update({
+        summary: notes.summary,
+        key_points: notes.keyPoints,
+        action_items: notes.actionItems,
+        decisions: notes.decisions,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', existingNotes.id)
+      .select()
+      .single();
+  } else {
+    // Insert new notes
+    return await supabase
+      .from('meeting_notes')
+      .insert({
+        recording_id: recordingId,
+        summary: notes.summary,
+        key_points: notes.keyPoints,
+        action_items: notes.actionItems,
+        decisions: notes.decisions
+      })
+      .select()
+      .single();
+  }
+}
+
+/**
+ * Gets meeting notes for a recording
+ */
+export async function getMeetingNotes(recordingId: string) {
+  return await supabase
+    .from('meeting_notes')
+    .select('*')
+    .eq('recording_id', recordingId)
+    .maybeSingle();
 } 

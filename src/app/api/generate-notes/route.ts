@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { OpenAI } from 'openai';
+import { saveMeetingNotes } from '../../../lib/supabase';
 
 // Initialize OpenAI client
 const openai = new OpenAI({
@@ -11,12 +12,20 @@ export async function POST(request: NextRequest) {
     console.log('API route called: /api/generate-notes');
     
     const body = await request.json();
-    const { transcript, additionalInstructions } = body;
+    const { transcript, additionalInstructions, recordingId } = body;
 
     if (!transcript || typeof transcript !== 'string' || transcript.trim() === '') {
       console.log('Invalid transcript data');
       return NextResponse.json(
         { error: 'Invalid transcript data' },
+        { status: 400 }
+      );
+    }
+
+    if (!recordingId) {
+      console.log('Missing recording ID');
+      return NextResponse.json(
+        { error: 'Missing recording ID' },
         { status: 400 }
       );
     }
@@ -78,6 +87,19 @@ export async function POST(request: NextRequest) {
       
       // Parse the JSON response
       const notes = JSON.parse(notesContent);
+      
+      // Save notes to the database
+      const { data: savedNotes, error } = await saveMeetingNotes(recordingId, notes);
+      
+      if (error) {
+        console.error('Error saving meeting notes:', error);
+        return NextResponse.json(
+          { error: 'Failed to save meeting notes', details: error.message },
+          { status: 500 }
+        );
+      }
+      
+      console.log('Notes saved to database successfully');
 
       return NextResponse.json(notes);
     } catch (openaiError) {

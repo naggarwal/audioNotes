@@ -167,6 +167,14 @@ export default function Home() {
         return;
       }
       
+      if (!currentRecordingId) {
+        setError({
+          message: 'Recording ID not found',
+          suggestion: 'Please upload the audio file again'
+        });
+        return;
+      }
+      
       setIsGeneratingNotes(true);
       setError(null);
       
@@ -182,7 +190,8 @@ export default function Home() {
       
       console.log('Sending transcript for notes generation:', {
         transcriptLength: transcriptText.length,
-        segmentsCount: transcript.length
+        segmentsCount: transcript.length,
+        recordingId: currentRecordingId
       });
 
       const response = await fetch('/api/generate-notes', {
@@ -192,7 +201,8 @@ export default function Home() {
         },
         body: JSON.stringify({ 
           transcript: transcriptText,
-          additionalInstructions 
+          additionalInstructions,
+          recordingId: currentRecordingId
         }),
       });
 
