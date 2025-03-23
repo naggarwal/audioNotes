@@ -6,7 +6,7 @@ import { upload } from '@vercel/blob/client';
 import { createRecording } from '../../lib/supabase';
 
 interface AudioUploaderProps {
-  onFileUpload: (file: File, blobUrl?: string) => void;
+  onFileUpload: (file: File, blobUrl?: string, recordingId?: string) => void;
   isLoading: boolean;
 }
 
@@ -89,6 +89,9 @@ export default function AudioUploader({ onFileUpload, isLoading }: AudioUploader
           setUploadProgress(100);
           console.log('File uploaded to Blob:', blobUpload.url);
           
+          // Variable to store the recording ID if created
+          let recordingId: string | undefined;
+          
           // Create a recording entry manually for development environments
           // Since onUploadCompleted doesn't run locally
           if (window.location.hostname === 'localhost') {
@@ -106,7 +109,7 @@ export default function AudioUploader({ onFileUpload, isLoading }: AudioUploader
                 mp4: 'audio/mp4',
               };
               
-              await createRecording({
+              const result = await createRecording({
                 file_name: blobUpload.pathname,
                 original_file_name: fileName,
                 file_size_bytes: uploadedFile.size,
@@ -122,14 +125,18 @@ export default function AudioUploader({ onFileUpload, isLoading }: AudioUploader
                   uploadedFromLocalDev: true
                 },
               });
-              console.log('Recording entry created successfully for local development');
+              
+              if (result.data) {
+                recordingId = result.data.id;
+                console.log('Recording entry created successfully for local development with ID:', recordingId);
+              }
             } catch (error) {
               console.error('Error creating recording entry for local development:', error);
             }
           }
           
           // Now process the file from the Blob URL
-          onFileUpload(uploadedFile, blobUpload.url);
+          onFileUpload(uploadedFile, blobUpload.url, recordingId);
         } else {
           // For direct upload mode or smaller files in auto mode
           console.log('Using direct upload (mode:', uploadMode, ')');

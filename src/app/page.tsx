@@ -30,21 +30,28 @@ export default function Home() {
   const [transcript, setTranscript] = useState<TranscriptSegment[]>([]);
   const [notes, setNotes] = useState<Notes | null>(null);
   const [error, setError] = useState<ErrorWithSuggestion | null>(null);
+  const [currentRecordingId, setCurrentRecordingId] = useState<string | null>(null);
 
-  const handleFileUpload = async (file: File, blobUrl?: string) => {
+  const handleFileUpload = async (file: File, blobUrl?: string, recordingId?: string) => {
     try {
       console.log('handleFileUpload called with file:', {
         name: file.name,
         type: file.type,
         size: file.size,
         sizeInMB: (file.size / 1024 / 1024).toFixed(2) + ' MB',
-        blobUrl: blobUrl || 'none'
+        blobUrl: blobUrl || 'none',
+        recordingId: recordingId || 'none'
       });
       
       setIsTranscribing(true);
       setError(null);
       setTranscript([]);
       setNotes(null);
+      
+      // Store the recording ID if provided
+      if (recordingId) {
+        setCurrentRecordingId(recordingId);
+      }
 
       const formData = new FormData();
       
@@ -54,6 +61,11 @@ export default function Home() {
         formData.append('fileName', file.name);
       } else {
         formData.append('file', file);
+      }
+      
+      // Include the recording ID if available
+      if (recordingId) {
+        formData.append('recordingId', recordingId);
       }
       
       console.log('FormData created, sending to API...');

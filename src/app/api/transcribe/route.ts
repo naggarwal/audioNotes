@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { OpenAI } from 'openai';
 // Import from Vercel Blob to fetch uploaded files - temporarily commenting out until we can fix import
 // import { list, get, del } from '@vercel/blob';
+import { createTranscription, TranscriptSegmentData, updateRecording } from '../../../lib/supabase';
 
 // Check which transcription service to use
 const USE_DEEPGRAM = process.env.USE_DEEPGRAM === 'true';
@@ -89,6 +90,7 @@ export async function POST(request: NextRequest) {
     
     // Check if we're receiving a blob URL or a direct file upload
     const blobUrl = formData.get('blobUrl') as string;
+    const recordingId = formData.get('recordingId') as string;
     
     let buffer: Buffer;
     let fileName: string;
@@ -130,111 +132,66 @@ export async function POST(request: NextRequest) {
         );
       }
     } else {
-      // Handle direct file upload case (for smaller files or local development)
-      const audioFile = formData.get('file') as File;
-      
-      if (!audioFile) {
-        console.log('No audio file provided');
+      // Handle direct file upload
+      const file = formData.get('file') as File;
+      if (!file) {
         return NextResponse.json(
-          { error: 'No audio file provided' },
+          { error: 'No file or blob URL provided' },
           { status: 400 }
         );
       }
       
-      console.log('Audio file received:', {
-        name: audioFile.name,
-        type: audioFile.type,
-        size: audioFile.size,
-        sizeInMB: (audioFile.size / 1024 / 1024).toFixed(2) + ' MB'
-      });
+      fileName = file.name;
+      fileType = file.type;
+      fileSize = file.size;
       
-      fileName = audioFile.name;
-      fileType = audioFile.type;
-      fileSize = audioFile.size;
-
-      // Check content length header first to avoid processing very large files
-      const contentLength = request.headers.get('content-length');
-      console.log('Content-Length header:', {
-        contentLength,
-        contentLengthInMB: contentLength ? (parseInt(contentLength) / 1024 / 1024).toFixed(2) + ' MB' : 'N/A'
-      });
-      
-      if (contentLength && parseInt(contentLength) > MAX_FILE_SIZE) {
-        console.log('Content-Length exceeds limit:', {
-          contentLength: parseInt(contentLength),
-          maxSize: MAX_FILE_SIZE,
-          contentLengthInMB: (parseInt(contentLength) / 1024 / 1024).toFixed(2) + ' MB',
-          maxSizeInMB: (MAX_FILE_SIZE / 1024 / 1024).toFixed(2) + ' MB'
-        });
-        
+      // Check if the file type is supported
+      if (!SUPPORTED_AUDIO_TYPES.includes(fileType)) {
         return NextResponse.json(
-          { 
-            error: `File size (${(parseInt(contentLength) / 1024 / 1024).toFixed(2)} MB) exceeds the limit of ${USE_DEEPGRAM ? '250MB' : '25MB'}.`,
-            suggestion: 'Please use a smaller audio file or try a different format.'
-          },
-          { status: 413 }
+          { error: 'Unsupported file type. Please upload an audio file (MP3, WAV, M4A, AAC, OGG)' },
+          { status: 400 }
         );
       }
       
-      // Check file size on the server side as well
-      if (audioFile.size > MAX_FILE_SIZE) {
-        console.log('File size exceeds limit:', {
-          fileSize: audioFile.size,
-          maxSize: MAX_FILE_SIZE,
-          fileSizeInMB: (audioFile.size / 1024 / 1024).toFixed(2) + ' MB',
-          maxSizeInMB: (MAX_FILE_SIZE / 1024 / 1024).toFixed(2) + ' MB'
-        });
-        
+      // Check if the file size is within limits
+      if (fileSize > MAX_FILE_SIZE) {
         return NextResponse.json(
-          { 
-            error: `File size (${(audioFile.size / 1024 / 1024).toFixed(2)} MB) exceeds the limit of ${USE_DEEPGRAM ? '250MB' : '25MB'}.`,
-            suggestion: 'Please use a smaller audio file or try a different format.'
-          },
-          { status: 413 }
+          { error: `File too large. Maximum size is ${MAX_FILE_SIZE / (1024 * 1024)}MB for ${USE_DEEPGRAM ? 'Deepgram' : 'OpenAI Whisper'}` },
+          { status: 400 }
         );
       }
-
-      console.log('Converting file to buffer...');
-      // Convert the file to a Buffer
-      const arrayBuffer = await audioFile.arrayBuffer();
-      buffer = Buffer.from(arrayBuffer);
-      console.log('Buffer created, size:', buffer.length);
+      
+      // Convert the file to a buffer
+      buffer = Buffer.from(await file.arrayBuffer());
+      console.log('Buffer created from uploaded file, size:', buffer.length);
     }
-
-    // Create a virtual file object for the transcription services
-    const virtualFile = {
-      name: fileName,
-      type: fileType,
-      size: fileSize
-    };
-
+    
+    // Choose transcription service based on environment variable
     try {
+      const audioFile = {
+        name: fileName,
+        type: fileType,
+        size: fileSize
+      };
+      
+      let result;
+      
       if (USE_DEEPGRAM) {
-        return await processWithDeepgram(virtualFile, buffer);
+        result = await processWithDeepgram(audioFile, buffer, recordingId);
       } else {
-        return await processWithOpenAI(virtualFile, buffer);
-      }
-    } catch (error: unknown) {
-      console.error(`${USE_DEEPGRAM ? 'Deepgram' : 'OpenAI'} API error:`, error);
-      
-      // Handle specific API errors
-      if (
-        (USE_DEEPGRAM && error instanceof Error && error.message.includes('413')) ||
-        (!USE_DEEPGRAM && typeof error === 'object' && error !== null && 'status' in error && (error as any).status === 413)
-      ) {
-        return NextResponse.json(
-          { 
-            error: 'The audio file is too large for processing.',
-            suggestion: 'Please use a smaller audio file or try a different format.'
-          },
-          { status: 413 }
-        );
+        result = await processWithOpenAI(audioFile, buffer, recordingId);
       }
       
-      throw error;
+      return result;
+    } catch (error) {
+      console.error('Transcription error:', error);
+      return NextResponse.json(
+        { error: 'Transcription failed', details: error instanceof Error ? error.message : String(error) },
+        { status: 500 }
+      );
     }
   } catch (error) {
-    console.error('Transcription error:', error);
+    console.error('Route error:', error);
     return NextResponse.json(
       { error: 'Failed to transcribe audio', details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
@@ -243,7 +200,11 @@ export async function POST(request: NextRequest) {
 }
 
 // Function to process audio with Deepgram
-async function processWithDeepgram(audioFile: { name: string, type: string, size: number }, buffer: Buffer) {
+async function processWithDeepgram(
+  audioFile: { name: string, type: string, size: number }, 
+  buffer: Buffer,
+  recordingId?: string
+) {
   console.log('Calling Deepgram API for transcription...');
   
   // Deepgram API endpoint
@@ -296,6 +257,7 @@ async function processWithDeepgram(audioFile: { name: string, type: string, size
       startTime: utterance.start,
       endTime: utterance.end,
       speaker: `Speaker ${utterance.speaker}`,
+      confidence: utterance.confidence
     };
   });
   
@@ -331,12 +293,45 @@ async function processWithDeepgram(audioFile: { name: string, type: string, size
     }
     
     console.log('Created segments from words:', segments.length);
+    
+    // If we have a recording ID, store the transcription
+    if (recordingId) {
+      try {
+        // Update recording status to processing
+        await updateRecording(recordingId, {
+          transcription_status: 'processing',
+        });
+        
+        // Store the transcription
+        await createTranscription(recordingId, segments as TranscriptSegmentData[]);
+        console.log('Transcription stored in database for recording:', recordingId);
+      } catch (error) {
+        console.error('Error storing transcription:', error);
+      }
+    }
+    
     return NextResponse.json({ transcript: segments });
   }
 
   console.log('Transcription processing complete:', {
     segmentsCount: processedSegments.length
   });
+  
+  // If we have a recording ID, store the transcription
+  if (recordingId) {
+    try {
+      // Update recording status to processing
+      await updateRecording(recordingId, {
+        transcription_status: 'processing',
+      });
+      
+      // Store the transcription
+      await createTranscription(recordingId, processedSegments);
+      console.log('Transcription stored in database for recording:', recordingId);
+    } catch (error) {
+      console.error('Error storing transcription:', error);
+    }
+  }
 
   return NextResponse.json({
     transcript: processedSegments
@@ -344,7 +339,11 @@ async function processWithDeepgram(audioFile: { name: string, type: string, size
 }
 
 // Function to process audio with OpenAI Whisper
-async function processWithOpenAI(audioFile: { name: string, type: string, size: number }, buffer: Buffer) {
+async function processWithOpenAI(
+  audioFile: { name: string, type: string, size: number }, 
+  buffer: Buffer,
+  recordingId?: string
+) {
   console.log('Calling OpenAI API for transcription...');
   
   if (!openai) {
@@ -378,6 +377,22 @@ async function processWithOpenAI(audioFile: { name: string, type: string, size: 
   console.log('Transcription processing complete:', {
     segmentsCount: processedSegments.length
   });
+  
+  // If we have a recording ID, store the transcription
+  if (recordingId) {
+    try {
+      // Update recording status to processing
+      await updateRecording(recordingId, {
+        transcription_status: 'processing',
+      });
+      
+      // Store the transcription
+      await createTranscription(recordingId, processedSegments);
+      console.log('Transcription stored in database for recording:', recordingId);
+    } catch (error) {
+      console.error('Error storing transcription:', error);
+    }
+  }
 
   return NextResponse.json({
     transcript: processedSegments
