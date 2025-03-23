@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { upload } from '@vercel/blob/client';
+import { createRecording } from '../../lib/supabase';
 
 interface AudioUploaderProps {
   onFileUpload: (file: File, blobUrl?: string) => void;
@@ -87,6 +88,45 @@ export default function AudioUploader({ onFileUpload, isLoading }: AudioUploader
           
           setUploadProgress(100);
           console.log('File uploaded to Blob:', blobUpload.url);
+          
+          // Create a recording entry manually for development environments
+          // Since onUploadCompleted doesn't run locally
+          if (window.location.hostname === 'localhost') {
+            try {
+              console.log('Creating recording entry manually for local development');
+              const fileExtension = fileName.split('.').pop()?.toLowerCase() || '';
+              
+              // Map extensions to MIME types
+              const mimeTypes: Record<string, string> = {
+                mp3: 'audio/mpeg',
+                wav: 'audio/wav',
+                m4a: 'audio/x-m4a',
+                aac: 'audio/aac',
+                ogg: 'audio/ogg',
+                mp4: 'audio/mp4',
+              };
+              
+              await createRecording({
+                file_name: blobUpload.pathname,
+                original_file_name: fileName,
+                file_size_bytes: uploadedFile.size,
+                duration_seconds: null,
+                file_format: fileExtension,
+                mime_type: uploadedFile.type || mimeTypes[fileExtension] || null,
+                storage_path: blobUpload.url,
+                user_id: null,
+                transcription_status: 'pending',
+                metadata: {
+                  uploadedAt: new Date().toISOString(),
+                  blobId: null,
+                  uploadedFromLocalDev: true
+                },
+              });
+              console.log('Recording entry created successfully for local development');
+            } catch (error) {
+              console.error('Error creating recording entry for local development:', error);
+            }
+          }
           
           // Now process the file from the Blob URL
           onFileUpload(uploadedFile, blobUpload.url);

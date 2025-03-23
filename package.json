@@ -11,6 +11,7 @@
   "dependencies": {
     "@deepgram/sdk": "^3.11.2",
     "@headlessui/react": "^2.2.0",
+    "@supabase/supabase-js": "^2.49.1",
     "@vercel/blob": "^0.27.3",
     "axios": "^1.8.2",
     "next": "15.2.1",
