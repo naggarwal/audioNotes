@@ -6,6 +6,7 @@ import TranscriptDisplay from './components/TranscriptDisplay';
 import MeetingNotes from './components/MeetingNotes';
 import RecordingsDrawer from './components/RecordingsDrawer';
 import DrawerToggleButton from './components/DrawerToggleButton';
+import ProcessStatus, { ProcessStage } from './components/ProcessStatus';
 
 interface TranscriptSegment {
   text: string;
@@ -36,6 +37,8 @@ export default function Home() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isLoadingRecording, setIsLoadingRecording] = useState(false);
   const [currentRecordingName, setCurrentRecordingName] = useState<string | null>(null);
+  const [processStage, setProcessStage] = useState<ProcessStage>(ProcessStage.Idle);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   const handleFileUpload = async (file: File, blobUrl?: string, recordingId?: string) => {
     try {
@@ -48,19 +51,23 @@ export default function Home() {
         recordingId: recordingId || 'none'
       });
       
+      if (blobUrl) {
+        setProcessStage(ProcessStage.Transcribing);
+      } else if (processStage === ProcessStage.Idle) {
+        setProcessStage(ProcessStage.Transcribing);
+      }
+      
       setIsTranscribing(true);
       setError(null);
       setTranscript([]);
       setNotes(null);
       
-      // Store the recording ID if provided
       if (recordingId) {
         setCurrentRecordingId(recordingId);
       }
 
       const formData = new FormData();
       
-      // If we have a blob URL, send that instead of the file
       if (blobUrl) {
         formData.append('blobUrl', blobUrl);
         formData.append('fileName', file.name);
@@ -68,7 +75,6 @@ export default function Home() {
         formData.append('file', file);
       }
       
-      // Include the recording ID if available
       if (recordingId) {
         formData.append('recordingId', recordingId);
       }
@@ -106,20 +112,23 @@ export default function Home() {
         
         setError({ message: errorMessage, suggestion });
         setIsTranscribing(false);
+        setProcessStage(ProcessStage.Idle);
         return;
       }
       
       if (data.transcript) {
-        // Apply the same combining logic to newly uploaded transcripts
         const combinedTranscript = combineConsecutiveSegments(data.transcript);
         setTranscript(combinedTranscript);
         setCurrentRecordingName(file.name);
+        setProcessStage(ProcessStage.Completed);
       } else {
         setError({ message: 'No transcript was returned' });
+        setProcessStage(ProcessStage.Idle);
       }
     } catch (error) {
       console.error('Error uploading file:', error);
       setError({ message: 'Error uploading file: ' + (error instanceof Error ? error.message : String(error)) });
+      setProcessStage(ProcessStage.Idle);
     } finally {
       setIsTranscribing(false);
     }
@@ -135,7 +144,6 @@ export default function Home() {
       setIsGeneratingNotes(true);
       setError(null);
       
-      // Prepare the request data
       const requestData = {
         transcript,
         instructions: additionalInstructions || undefined,
@@ -156,7 +164,6 @@ export default function Home() {
         throw new Error(data.error || 'Failed to generate notes');
       }
       
-      // The API returns the notes directly now, not nested in a 'notes' property
       setNotes(data);
     } catch (error) {
       console.error('Error generating notes:', error);
@@ -181,15 +188,12 @@ export default function Home() {
       
       const data = await response.json();
       
-      // Set the current recording ID
       setCurrentRecordingId(recordingId);
       
-      // Set the recording name
       if (data.recording) {
         setCurrentRecordingName(data.recording.original_file_name);
       }
       
-      // Process transcript if available
       if (data.transcription && data.transcription.segments) {
         const mappedTranscript = data.transcription.segments.map((segment: any) => ({
           text: segment.text,
@@ -198,14 +202,11 @@ export default function Home() {
           speaker: segment.speaker
         }));
         
-        // Combine consecutive segments from same speaker
         const formattedTranscript = combineConsecutiveSegments(mappedTranscript);
         
         setTranscript(formattedTranscript);
         
-        // Set meeting notes if they exist in the database
         if (data.meetingNotes) {
-          // Format the notes from database format to our component format
           setNotes({
             summary: data.meetingNotes.summary || '',
             keyPoints: data.meetingNotes.key_points || [],
@@ -213,7 +214,6 @@ export default function Home() {
             decisions: data.meetingNotes.decisions || []
           });
         }
-        // Do not auto-generate notes anymore
       }
     } catch (err) {
       console.error('Error loading recording:', err);
@@ -226,7 +226,6 @@ export default function Home() {
     }
   };
 
-  // Function to combine consecutive segments from the same speaker
   const combineConsecutiveSegments = (segments: TranscriptSegment[]): TranscriptSegment[] => {
     if (!segments.length) return [];
     
@@ -236,18 +235,15 @@ export default function Home() {
     for (let i = 1; i < segments.length; i++) {
       const nextSegment = segments[i];
       
-      // If the speakers match, combine the segments
       if (nextSegment.speaker === currentSegment.speaker) {
         currentSegment.text += ' ' + nextSegment.text;
         currentSegment.endTime = nextSegment.endTime;
       } else {
-        // Different speaker, add the current one to result and start a new segment
         result.push(currentSegment);
         currentSegment = { ...nextSegment };
       }
     }
     
-    // Don't forget to add the last segment
     result.push(currentSegment);
     
     return result;
@@ -266,7 +262,26 @@ export default function Home() {
           </h1>
 
           <div className="space-y-10">
-            <AudioUploader onFileUpload={handleFileUpload} isLoading={isTranscribing} />
+            <AudioUploader 
+              onFileUpload={handleFileUpload} 
+              isLoading={isTranscribing} 
+              setUploadProgress={(progress) => {
+                setUploadProgress(progress);
+                if (progress > 0 && processStage === ProcessStage.Idle) {
+                  setProcessStage(ProcessStage.Uploading);
+                }
+                if (progress === 100) {
+                  setProcessStage(ProcessStage.Transcribing);
+                }
+              }}
+            />
+
+            {processStage !== ProcessStage.Idle && (
+              <ProcessStatus 
+                stage={processStage} 
+                uploadProgress={uploadProgress} 
+              />
+            )}
 
             {error && (
               <div className="w-full max-w-2xl mx-auto bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md p-4">
@@ -289,7 +304,7 @@ export default function Home() {
               </div>
             )}
 
-            {(isTranscribing || isLoadingRecording) && (
+            {(isTranscribing || isLoadingRecording) && processStage === ProcessStage.Idle && (
               <div className="w-full max-w-2xl mx-auto text-center py-12">
                 <div className="inline-block animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
                 <p className="mt-4 text-gray-600 dark:text-gray-400">
@@ -319,10 +334,8 @@ export default function Home() {
         </div>
       </main>
       
-      {/* Drawer Toggle Button */}
       <DrawerToggleButton onClick={toggleDrawer} isDrawerOpen={isDrawerOpen} />
       
-      {/* Recordings Drawer */}
       <RecordingsDrawer 
         isOpen={isDrawerOpen}
         onClose={toggleDrawer}
@@ -330,7 +343,6 @@ export default function Home() {
         selectedRecordingId={currentRecordingId}
       />
       
-      {/* Overlay when drawer is open on mobile */}
       {isDrawerOpen && (
         <div 
           className="fixed inset-0 bg-black bg-opacity-50 z-20 md:hidden"

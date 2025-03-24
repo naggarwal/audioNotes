@@ -8,14 +8,15 @@ import { createRecording } from '../../lib/supabase';
 interface AudioUploaderProps {
   onFileUpload: (file: File, blobUrl?: string, recordingId?: string) => void;
   isLoading: boolean;
+  setUploadProgress?: (progress: number) => void;
 }
 
-export default function AudioUploader({ onFileUpload, isLoading }: AudioUploaderProps) {
+export default function AudioUploader({ onFileUpload, isLoading, setUploadProgress }: AudioUploaderProps) {
   const [file, setFile] = useState<File | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [processingFile, setProcessingFile] = useState(false);
   const [splittingFile, setSplittingFile] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
+  const [internalUploadProgress, setInternalUploadProgress] = useState(0);
   const [currentSegment, setCurrentSegment] = useState<number | null>(null);
   const [totalSegments, setTotalSegments] = useState<number | null>(null);
   const [uploadMode, setUploadMode] = useState<string>('auto'); // Default to auto detection
@@ -43,16 +44,23 @@ export default function AudioUploader({ onFileUpload, isLoading }: AudioUploader
       // When loading is finished, reset the states
       setProcessingFile(false);
       setFile(null);
-      setUploadProgress(0);
+      setInternalUploadProgress(0);
     }
   }, [isLoading, processingFile]);
+
+  // Update parent component with upload progress
+  useEffect(() => {
+    if (setUploadProgress) {
+      setUploadProgress(internalUploadProgress);
+    }
+  }, [internalUploadProgress, setUploadProgress]);
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     const uploadedFile = acceptedFiles[0];
     if (uploadedFile) {
       // Reset previous state
       setErrorMessage(null);
-      setUploadProgress(0);
+      setInternalUploadProgress(0);
       
       console.log('File dropped:', {
         name: uploadedFile.name,
@@ -76,7 +84,7 @@ export default function AudioUploader({ onFileUpload, isLoading }: AudioUploader
           console.log('Using Vercel Blob upload (mode:', uploadMode, ')');
           
           // Start upload with progress tracking
-          setUploadProgress(0);
+          setInternalUploadProgress(0);
           
           // Create a unique filename to avoid collisions
           const fileName = `${Date.now()}-${uploadedFile.name}`;
@@ -84,9 +92,13 @@ export default function AudioUploader({ onFileUpload, isLoading }: AudioUploader
           const blobUpload = await upload(fileName, uploadedFile, {
             access: 'public',
             handleUploadUrl: '/api/audio-upload',
+            onUploadProgress: (progressEvent) => {
+              const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+              setInternalUploadProgress(progress);
+            },
           });
           
-          setUploadProgress(100);
+          setInternalUploadProgress(100);
           console.log('File uploaded to Blob:', blobUpload.url);
           
           // Variable to store the recording ID if created
@@ -199,7 +211,7 @@ export default function AudioUploader({ onFileUpload, isLoading }: AudioUploader
               <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
               <p className="mt-2 text-sm text-gray-500">
                 {isLoading ? 'Transcribing...' : 
-                 uploadProgress > 0 ? `Uploading: ${uploadProgress}%` : 
+                 internalUploadProgress > 0 ? `Uploading: ${internalUploadProgress}%` : 
                  splittingFile ? 'Splitting audio file...' : 'Processing audio file...'}
               </p>
               {currentSegment !== null && totalSegments !== null && !splittingFile && (
