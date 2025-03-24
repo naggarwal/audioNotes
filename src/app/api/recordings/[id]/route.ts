@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRecording, getTranscriptionByRecordingId, getMeetingNotes } from '../../../../lib/supabase';
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: NextRequest) {
   try {
-    const recordingId = params.id;
+    // Extract the ID from the URL path
+    const url = new URL(request.url);
+    const pathParts = url.pathname.split('/');
+    const recordingId = pathParts[pathParts.length - 1];
     
     if (!recordingId) {
       return NextResponse.json(
