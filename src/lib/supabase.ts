@@ -305,4 +305,14 @@ export async function getMeetingNotes(recordingId: string) {
     .select('*')
     .eq('recording_id', recordingId)
     .maybeSingle();
+}
+
+/**
+ * Gets all recordings
+ */
+export async function getAllRecordings() {
+  return await supabase
+    .from('recordings')
+    .select('*')
+    .order('created_at', { ascending: false });
 } 

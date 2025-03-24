@@ -1,16 +1,18 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import AudioUploader from './components/AudioUploader';
 import TranscriptDisplay from './components/TranscriptDisplay';
 import MeetingNotes from './components/MeetingNotes';
+import RecordingsDrawer from './components/RecordingsDrawer';
+import DrawerToggleButton from './components/DrawerToggleButton';
 
 interface TranscriptSegment {
   text: string;
   startTime: number;
   endTime: number;
   speaker?: string;
-} 
+}
 
 interface Notes {
   summary: string;
@@ -31,6 +33,9 @@ export default function Home() {
   const [notes, setNotes] = useState<Notes | null>(null);
   const [error, setError] = useState<ErrorWithSuggestion | null>(null);
   const [currentRecordingId, setCurrentRecordingId] = useState<string | null>(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isLoadingRecording, setIsLoadingRecording] = useState(false);
+  const [currentRecordingName, setCurrentRecordingName] = useState<string | null>(null);
 
   const handleFileUpload = async (file: File, blobUrl?: string, recordingId?: string) => {
     try {
@@ -84,49 +89,140 @@ export default function Home() {
       
       const data = await response.json();
       console.log('Response data:', data);
-
+      
       if (!response.ok) {
-        console.error('API error response:', {
-          status: response.status,
-          error: data.error,
-          suggestion: data.suggestion
-        });
+        let errorMessage = 'Failed to transcribe audio';
+        let suggestion = undefined;
         
-        setError({
-          message: data.error || 'Failed to transcribe audio',
-          suggestion: data.suggestion
-        });
+        if (data.error) {
+          errorMessage = data.error;
+          
+          if (data.error.includes('size')) {
+            suggestion = 'Try uploading a smaller audio file or splitting your recording into smaller segments.';
+          } else if (data.error.includes('format') || data.error.includes('type')) {
+            suggestion = 'Make sure your audio file is in a supported format (MP3, WAV, M4A, AAC, OGG).';
+          }
+        }
+        
+        setError({ message: errorMessage, suggestion });
+        setIsTranscribing(false);
         return;
       }
-
-      console.log('Transcription successful:', {
-        segmentsCount: data.transcript.length
-      });
       
-      // If the transcript doesn't have speaker information, add default speakers
-      let enhancedTranscript = data.transcript.map((segment: TranscriptSegment, index: number) => {
-        if (!segment.speaker) {
-          // Alternate between Speaker 1 and Speaker 2 if no speaker info
-          return {
-            ...segment,
-            speaker: `Speaker ${Math.floor(index / 3) % 2 + 1}`
-          };
-        }
-        return segment;
-      });
-      
-      // Combine consecutive segments from the same speaker
-      enhancedTranscript = combineConsecutiveSegments(enhancedTranscript);
-      
-      setTranscript(enhancedTranscript);
-    } catch (err: any) {
-      console.error('Error in handleFileUpload:', err);
-      setError({
-        message: err.message || 'Failed to transcribe audio',
-        suggestion: 'Please try again with a different file'
-      });
+      if (data.transcript) {
+        // Apply the same combining logic to newly uploaded transcripts
+        const combinedTranscript = combineConsecutiveSegments(data.transcript);
+        setTranscript(combinedTranscript);
+        setCurrentRecordingName(file.name);
+      } else {
+        setError({ message: 'No transcript was returned' });
+      }
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      setError({ message: 'Error uploading file: ' + (error instanceof Error ? error.message : String(error)) });
     } finally {
       setIsTranscribing(false);
+    }
+  };
+  
+  const handleGenerateNotes = async (additionalInstructions: string = '') => {
+    if (!transcript.length) {
+      setError({ message: 'No transcript available for generating notes' });
+      return;
+    }
+    
+    try {
+      setIsGeneratingNotes(true);
+      setError(null);
+      
+      // Prepare the request data
+      const requestData = {
+        transcript,
+        instructions: additionalInstructions || undefined,
+        recordingId: currentRecordingId || undefined
+      };
+      
+      const response = await fetch('/api/generate-notes', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestData),
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to generate notes');
+      }
+      
+      // The API returns the notes directly now, not nested in a 'notes' property
+      setNotes(data);
+    } catch (error) {
+      console.error('Error generating notes:', error);
+      setError({ message: 'Error generating notes: ' + (error instanceof Error ? error.message : String(error)) });
+    } finally {
+      setIsGeneratingNotes(false);
+    }
+  };
+
+  const handleSelectRecording = async (recordingId: string) => {
+    setIsLoadingRecording(true);
+    setError(null);
+    setTranscript([]);
+    setNotes(null);
+    
+    try {
+      const response = await fetch(`/api/recordings/${recordingId}`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch recording');
+      }
+      
+      const data = await response.json();
+      
+      // Set the current recording ID
+      setCurrentRecordingId(recordingId);
+      
+      // Set the recording name
+      if (data.recording) {
+        setCurrentRecordingName(data.recording.original_file_name);
+      }
+      
+      // Process transcript if available
+      if (data.transcription && data.transcription.segments) {
+        const mappedTranscript = data.transcription.segments.map((segment: any) => ({
+          text: segment.text,
+          startTime: segment.start_time,
+          endTime: segment.end_time,
+          speaker: segment.speaker
+        }));
+        
+        // Combine consecutive segments from same speaker
+        const formattedTranscript = combineConsecutiveSegments(mappedTranscript);
+        
+        setTranscript(formattedTranscript);
+        
+        // Set meeting notes if they exist in the database
+        if (data.meetingNotes) {
+          // Format the notes from database format to our component format
+          setNotes({
+            summary: data.meetingNotes.summary || '',
+            keyPoints: data.meetingNotes.key_points || [],
+            actionItems: data.meetingNotes.action_items || [],
+            decisions: data.meetingNotes.decisions || []
+          });
+        }
+        // Do not auto-generate notes anymore
+      }
+    } catch (err) {
+      console.error('Error loading recording:', err);
+      setError({ 
+        message: 'Failed to load recording', 
+        suggestion: 'Please try again or select a different recording'
+      });
+    } finally {
+      setIsLoadingRecording(false);
     }
   };
 
@@ -134,166 +230,113 @@ export default function Home() {
   const combineConsecutiveSegments = (segments: TranscriptSegment[]): TranscriptSegment[] => {
     if (!segments.length) return [];
     
-    const combinedSegments: TranscriptSegment[] = [];
+    const result: TranscriptSegment[] = [];
     let currentSegment = { ...segments[0] };
     
     for (let i = 1; i < segments.length; i++) {
       const nextSegment = segments[i];
       
-      // If the same speaker, combine the text and update the end time
+      // If the speakers match, combine the segments
       if (nextSegment.speaker === currentSegment.speaker) {
         currentSegment.text += ' ' + nextSegment.text;
         currentSegment.endTime = nextSegment.endTime;
       } else {
-        // Different speaker, push current segment and start a new one
-        combinedSegments.push(currentSegment);
+        // Different speaker, add the current one to result and start a new segment
+        result.push(currentSegment);
         currentSegment = { ...nextSegment };
       }
     }
     
     // Don't forget to add the last segment
-    combinedSegments.push(currentSegment);
+    result.push(currentSegment);
     
-    return combinedSegments;
+    return result;
   };
 
-  const handleGenerateNotes = async (additionalInstructions: string = '') => {
-    try {
-      if (transcript.length === 0) {
-        setError({
-          message: 'No transcript available',
-          suggestion: 'Please upload and transcribe an audio file first'
-        });
-        return;
-      }
-      
-      if (!currentRecordingId) {
-        setError({
-          message: 'Recording ID not found',
-          suggestion: 'Please upload the audio file again'
-        });
-        return;
-      }
-      
-      setIsGeneratingNotes(true);
-      setError(null);
-      
-      // Convert transcript segments to text
-      const transcriptText = transcript.map((segment, index) => {
-        // Format speaker information if available
-        const speakerPrefix = segment.speaker 
-          ? `${segment.speaker}: ` 
-          : `Speaker ${Math.floor(index / 3) % 2 + 1}: `; // Alternate speakers if not provided
-          
-        return `${speakerPrefix}${segment.text}`;
-      }).join('\n\n');
-      
-      console.log('Sending transcript for notes generation:', {
-        transcriptLength: transcriptText.length,
-        segmentsCount: transcript.length,
-        recordingId: currentRecordingId
-      });
-
-      const response = await fetch('/api/generate-notes', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          transcript: transcriptText,
-          additionalInstructions,
-          recordingId: currentRecordingId
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to generate notes');
-      }
-
-      const data = await response.json();
-      console.log('Notes generated:', data);
-      
-      setNotes({
-        summary: data.summary,
-        keyPoints: data.keyPoints,
-        actionItems: data.actionItems,
-        decisions: data.decisions
-      });
-    } catch (err: any) {
-      console.error('Error in handleGenerateNotes:', err);
-      setError({
-        message: err.message || 'Failed to generate notes',
-        suggestion: 'Please try again or check your transcript'
-      });
-    } finally {
-      setIsGeneratingNotes(false);
-    }
-  };
-
-  // Helper function to format time
-  const formatTime = (seconds: number): string => {
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = Math.floor(seconds % 60);
-    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+  const toggleDrawer = () => {
+    setIsDrawerOpen(!isDrawerOpen);
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-7xl mx-auto">
-        <div className="text-center mb-12">
-          <h1 className="text-4xl font-extrabold text-gray-900 dark:text-white sm:text-5xl sm:tracking-tight">
-            <span className="block">Audio Meeting Notes</span>
+    <div className="min-h-screen flex flex-col">
+      <main className="flex-1">
+        <div className="max-w-6xl mx-auto px-4 py-8">
+          <h1 className="text-3xl font-bold text-center mb-8 text-gray-900 dark:text-gray-100">
+            Audio Meeting Notes
           </h1>
-          <p className="mt-3 max-w-md mx-auto text-base text-gray-500 dark:text-gray-400 sm:text-lg md:mt-5 md:text-xl md:max-w-3xl">
-            Upload an audio recording of your meeting to get a transcript and generate meeting notes.
-          </p>
-        </div>
 
-        <div className="space-y-10">
-          <AudioUploader onFileUpload={handleFileUpload} isLoading={isTranscribing} />
+          <div className="space-y-10">
+            <AudioUploader onFileUpload={handleFileUpload} isLoading={isTranscribing} />
 
-          {error && (
-            <div className="w-full max-w-2xl mx-auto bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md p-4">
-              <div className="flex">
-                <div className="flex-shrink-0">
-                  <svg className="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                  </svg>
-                </div>
-                <div className="ml-3">
-                  <h3 className="text-sm font-medium text-red-800 dark:text-red-200">Error</h3>
-                  <div className="mt-2 text-sm text-red-700 dark:text-red-300">
-                    <p>{error.message}</p>
-                    {error.suggestion && (
-                      <p className="mt-1 font-medium">{error.suggestion}</p>
-                    )}
+            {error && (
+              <div className="w-full max-w-2xl mx-auto bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md p-4">
+                <div className="flex">
+                  <div className="flex-shrink-0">
+                    <svg className="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                  <div className="ml-3">
+                    <h3 className="text-sm font-medium text-red-800 dark:text-red-200">Error</h3>
+                    <div className="mt-2 text-sm text-red-700 dark:text-red-300">
+                      <p>{error.message}</p>
+                      {error.suggestion && (
+                        <p className="mt-1 font-medium">{error.suggestion}</p>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {(isTranscribing) && (
-            <div className="w-full max-w-2xl mx-auto text-center py-12">
-              <div className="inline-block animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-              <p className="mt-4 text-gray-600 dark:text-gray-400">
-                {'Transcribing your audio file...'}
-              </p>
-            </div>
-          )}
+            {(isTranscribing || isLoadingRecording) && (
+              <div className="w-full max-w-2xl mx-auto text-center py-12">
+                <div className="inline-block animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+                <p className="mt-4 text-gray-600 dark:text-gray-400">
+                  {isTranscribing ? 'Transcribing your audio file...' : 'Loading recording...'}
+                </p>
+              </div>
+            )}
 
-          {notes && <MeetingNotes notes={notes} />}
+            {currentRecordingName && transcript.length > 0 && (
+              <div className="w-full max-w-4xl mx-auto">
+                <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-gray-100">
+                  {currentRecordingName}
+                </h2>
+              </div>
+            )}
 
-          {transcript.length > 0 && (
-            <TranscriptDisplay 
-              transcript={transcript}
-              isGeneratingNotes={isGeneratingNotes}
-              onGenerateNotes={handleGenerateNotes}
-            />
-          )}
+            {notes && <MeetingNotes notes={notes} />}
+
+            {transcript.length > 0 && (
+              <TranscriptDisplay 
+                transcript={transcript} 
+                isGeneratingNotes={isGeneratingNotes}
+                onGenerateNotes={handleGenerateNotes}
+              />
+            )}
+          </div>
         </div>
-      </div>
+      </main>
+      
+      {/* Drawer Toggle Button */}
+      <DrawerToggleButton onClick={toggleDrawer} isDrawerOpen={isDrawerOpen} />
+      
+      {/* Recordings Drawer */}
+      <RecordingsDrawer 
+        isOpen={isDrawerOpen}
+        onClose={toggleDrawer}
+        onSelectRecording={handleSelectRecording}
+        selectedRecordingId={currentRecordingId}
+      />
+      
+      {/* Overlay when drawer is open on mobile */}
+      {isDrawerOpen && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 z-20 md:hidden"
+          onClick={toggleDrawer}
+        ></div>
+      )}
     </div>
   );
 }

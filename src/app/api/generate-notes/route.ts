@@ -7,14 +7,23 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+// Define the shape of transcript segments
+interface TranscriptSegment {
+  text: string;
+  startTime: number;
+  endTime: number;
+  speaker?: string;
+}
+
 export async function POST(request: NextRequest) {
   try {
     console.log('API route called: /api/generate-notes');
     
     const body = await request.json();
-    const { transcript, additionalInstructions, recordingId } = body;
+    const { transcript, instructions, recordingId } = body;
 
-    if (!transcript || typeof transcript !== 'string' || transcript.trim() === '') {
+    // Check if transcript is valid - now as array of objects
+    if (!transcript || !Array.isArray(transcript) || transcript.length === 0) {
       console.log('Invalid transcript data');
       return NextResponse.json(
         { error: 'Invalid transcript data' },
@@ -22,17 +31,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!recordingId) {
-      console.log('Missing recording ID');
-      return NextResponse.json(
-        { error: 'Missing recording ID' },
-        { status: 400 }
-      );
-    }
+    // Convert transcript segments to text format
+    let transcriptText = '';
+    transcript.forEach((segment: TranscriptSegment) => {
+      const speakerPrefix = segment.speaker ? `${segment.speaker}: ` : '';
+      transcriptText += `${speakerPrefix}${segment.text}\n\n`;
+    });
 
-    console.log('Transcript received, length:', transcript.length);
-    if (additionalInstructions) {
-      console.log('Additional instructions received:', additionalInstructions);
+    console.log('Transcript processed, length:', transcriptText.length);
+    if (instructions) {
+      console.log('Additional instructions received:', instructions);
     }
 
     // Prepare the system prompt with additional instructions if provided
@@ -54,8 +62,8 @@ export async function POST(request: NextRequest) {
     Make sure your response is valid JSON.`;
 
     // Add additional instructions if provided
-    if (additionalInstructions && additionalInstructions.trim() !== '') {
-      systemPrompt += `\n\nAdditional Instructions: ${additionalInstructions}`;
+    if (instructions && instructions.trim() !== '') {
+      systemPrompt += `\n\nAdditional Instructions: ${instructions}`;
     }
 
     // Generate meeting notes using OpenAI
@@ -70,7 +78,7 @@ export async function POST(request: NextRequest) {
           },
           {
             role: 'user',
-            content: `Here is the meeting transcript:\n\n${transcript}`
+            content: `Here is the meeting transcript:\n\n${transcriptText}`
           }
         ],
         response_format: { type: 'json_object' },
@@ -88,18 +96,22 @@ export async function POST(request: NextRequest) {
       // Parse the JSON response
       const notes = JSON.parse(notesContent);
       
-      // Save notes to the database
-      const { data: savedNotes, error } = await saveMeetingNotes(recordingId, notes);
-      
-      if (error) {
-        console.error('Error saving meeting notes:', error);
-        return NextResponse.json(
-          { error: 'Failed to save meeting notes', details: error.message },
-          { status: 500 }
-        );
+      // Save notes to the database if we have a recording ID
+      if (recordingId) {
+        const { data: savedNotes, error } = await saveMeetingNotes(recordingId, notes);
+        
+        if (error) {
+          console.error('Error saving meeting notes:', error);
+          return NextResponse.json(
+            { error: 'Failed to save meeting notes', details: error.message },
+            { status: 500 }
+          );
+        }
+        
+        console.log('Notes saved to database successfully');
+      } else {
+        console.log('No recording ID provided, skipping database save');
       }
-      
-      console.log('Notes saved to database successfully');
 
       return NextResponse.json(notes);
     } catch (openaiError) {
