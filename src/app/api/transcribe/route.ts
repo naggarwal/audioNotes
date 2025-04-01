@@ -4,8 +4,8 @@ import { NextRequest, NextResponse } from 'next/server';
 
 // Import OpenAI for Whisper fallback
 import { OpenAI } from 'openai';
-// Import from Vercel Blob to fetch uploaded files - temporarily commenting out until we can fix import
-// import { list, get, del } from '@vercel/blob';
+// Import from Vercel Blob to fetch and delete uploaded files
+import { del } from '@vercel/blob';
 import { createTranscription, TranscriptSegmentData, updateRecording } from '../../../lib/supabase';
 
 // Check which transcription service to use
@@ -177,9 +177,9 @@ export async function POST(request: NextRequest) {
       let result;
       
       if (USE_DEEPGRAM) {
-        result = await processWithDeepgram(audioFile, buffer, recordingId);
+        result = await processWithDeepgram(audioFile, buffer, recordingId, blobUrl);
       } else {
-        result = await processWithOpenAI(audioFile, buffer, recordingId);
+        result = await processWithOpenAI(audioFile, buffer, recordingId, blobUrl);
       }
       
       return result;
@@ -203,7 +203,8 @@ export async function POST(request: NextRequest) {
 async function processWithDeepgram(
   audioFile: { name: string, type: string, size: number }, 
   buffer: Buffer,
-  recordingId?: string
+  recordingId?: string,
+  blobUrl?: string
 ) {
   console.log('Calling Deepgram API for transcription...');
   
@@ -305,6 +306,17 @@ async function processWithDeepgram(
         // Store the transcription
         await createTranscription(recordingId, segments as TranscriptSegmentData[]);
         console.log('Transcription stored in database for recording:', recordingId);
+        
+        // Clean up the blob file if it exists
+        if (blobUrl) {
+          try {
+            await del(blobUrl);
+            console.log('Successfully deleted blob file:', blobUrl);
+          } catch (error) {
+            console.error('Error deleting blob file:', error);
+            // Don't throw error here as transcription was successful
+          }
+        }
       } catch (error) {
         console.error('Error storing transcription:', error);
       }
@@ -328,6 +340,17 @@ async function processWithDeepgram(
       // Store the transcription
       await createTranscription(recordingId, processedSegments);
       console.log('Transcription stored in database for recording:', recordingId);
+      
+      // Clean up the blob file if it exists
+      if (blobUrl) {
+        try {
+          await del(blobUrl);
+          console.log('Successfully deleted blob file:', blobUrl);
+        } catch (error) {
+          console.error('Error deleting blob file:', error);
+          // Don't throw error here as transcription was successful
+        }
+      }
     } catch (error) {
       console.error('Error storing transcription:', error);
     }
@@ -342,7 +365,8 @@ async function processWithDeepgram(
 async function processWithOpenAI(
   audioFile: { name: string, type: string, size: number }, 
   buffer: Buffer,
-  recordingId?: string
+  recordingId?: string,
+  blobUrl?: string
 ) {
   console.log('Calling OpenAI API for transcription...');
   
@@ -389,6 +413,17 @@ async function processWithOpenAI(
       // Store the transcription
       await createTranscription(recordingId, processedSegments);
       console.log('Transcription stored in database for recording:', recordingId);
+      
+      // Clean up the blob file if it exists
+      if (blobUrl) {
+        try {
+          await del(blobUrl);
+          console.log('Successfully deleted blob file:', blobUrl);
+        } catch (error) {
+          console.error('Error deleting blob file:', error);
+          // Don't throw error here as transcription was successful
+        }
+      }
     } catch (error) {
       console.error('Error storing transcription:', error);
     }
