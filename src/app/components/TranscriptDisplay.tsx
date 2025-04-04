@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import CopyButton from './CopyButton';
 
 interface TranscriptSegment {
   text: string;
@@ -28,6 +29,13 @@ export default function TranscriptDisplay({
     return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
   };
 
+  // Generate the full transcript text for copying
+  const fullTranscriptText = transcript.map(segment => {
+    const timeStamp = formatTime(segment.startTime);
+    const speakerText = segment.speaker ? `${segment.speaker}: ` : '';
+    return `[${timeStamp}] ${speakerText}${segment.text}`;
+  }).join('\n\n');
+
   if (transcript.length === 0) {
     return null;
   }
@@ -37,6 +45,7 @@ export default function TranscriptDisplay({
       <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex flex-col gap-4">
         <div className="flex justify-between items-center">
           <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Transcript</h2>
+          <CopyButton textToCopy={fullTranscriptText} tooltipText="Transcript" />
         </div>
         
         <div className="w-full">

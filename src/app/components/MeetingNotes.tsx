@@ -1,5 +1,7 @@
 'use client';
 
+import CopyButton from './CopyButton';
+
 interface MeetingNotesProps {
   notes: {
     summary: string;
@@ -14,10 +16,28 @@ export default function MeetingNotes({ notes }: MeetingNotesProps) {
     return null;
   }
 
+  // Generate full notes text for copying
+  const fullNotesText = `
+Meeting Summary:
+${notes.summary}
+
+Key Points:
+${notes.keyPoints.map(point => `• ${point}`).join('\n')}
+
+Action Items:
+${notes.actionItems.map(item => `• ${item}`).join('\n')}
+
+Decisions:
+${notes.decisions.map(decision => `• ${decision}`).join('\n')}
+`.trim();
+
   return (
     <div className="w-full max-w-4xl mx-auto mt-8 bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
       <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-        <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Meeting Notes</h2>
+        <div className="flex justify-between items-center">
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Meeting Notes</h2>
+          <CopyButton textToCopy={fullNotesText} tooltipText="Notes" />
+        </div>
       </div>
       <div className="p-6 space-y-6">
         <div>
