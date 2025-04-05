@@ -100,6 +100,26 @@ When deploying to Vercel, make sure to:
 - The application may have file size limits based on the API constraints.
 - Processing large audio files may take some time.
 
+## Google Drive Integration
+
+This application supports uploading audio files directly from Google Drive. To enable this feature:
+
+1. Create a project in the [Google Cloud Console](https://console.cloud.google.com/)
+2. Enable the Google Drive API for your project
+3. Create OAuth 2.0 credentials:
+   - Go to "APIs & Services" > "Credentials"
+   - Click "Create Credentials" > "OAuth client ID"
+   - Set up the OAuth consent screen if prompted
+   - Select "Web application" as the application type
+   - Add your domain to the "Authorized JavaScript origins" (e.g., `http://localhost:3000` for development)
+   - Add your redirect URI (e.g., `http://localhost:3000` for development)
+4. Copy the Client ID and add it to your `.env.local` file:
+   ```
+   NEXT_PUBLIC_GOOGLE_CLIENT_ID=your_client_id
+   ```
+
+If you're developing locally, you must add yourself as a test user in the OAuth consent screen section.
+
 ## License
 
 MIT

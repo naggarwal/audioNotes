@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { GoogleOAuthProvider } from '@react-oauth/google';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -17,6 +18,9 @@ export const metadata: Metadata = {
   description: 'Upload audio recordings of meetings to get transcripts with speaker identification and generate meeting notes',
 };
 
+// Get Google client ID from environment variable
+const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -27,7 +31,9 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        {children}
+        <GoogleOAuthProvider clientId={googleClientId}>
+          {children}
+        </GoogleOAuthProvider>
       </body>
     </html>
   );

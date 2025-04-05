@@ -4,6 +4,13 @@ import { useState, useCallback, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { upload } from '@vercel/blob/client';
 import { createRecording } from '../../lib/supabase';
+import dynamic from 'next/dynamic';
+
+// Dynamically import the GoogleDrivePicker to handle client-side only code
+const GoogleDrivePicker = dynamic(() => import('./GoogleDrivePicker'), {
+  ssr: false,
+  loading: () => <div className="animate-pulse bg-gray-200 dark:bg-gray-800 h-9 w-32 rounded"></div>,
+});
 
 interface AudioUploaderProps {
   onFileUpload: (file: File, blobUrl?: string, recordingId?: string) => void;
@@ -162,6 +169,112 @@ export default function AudioUploader({ onFileUpload, isLoading, setUploadProgre
     }
   }, [onFileUpload, uploadMode]);
 
+  // Handle file selected from Google Drive
+  const handleGoogleDriveFileSelected = useCallback(async (selectedFile: File, fileUrl: string) => {
+    // Reset previous state
+    setErrorMessage(null);
+    setInternalUploadProgress(0);
+    
+    console.log('File selected from Google Drive:', {
+      name: selectedFile.name,
+      type: selectedFile.type,
+      size: selectedFile.size,
+      sizeInMB: (selectedFile.size / 1024 / 1024).toFixed(2) + ' MB',
+      uploadMode
+    });
+    
+    // Set file
+    setFile(selectedFile);
+    setProcessingFile(true);
+    
+    try {
+      // Process like a regular upload
+      // Decide whether to use Blob upload or direct upload based on config and file size
+      const shouldUseBlobUpload = 
+        uploadMode === 'blob' || 
+        (uploadMode === 'auto' && selectedFile.size > 4 * 1024 * 1024);
+      
+      if (shouldUseBlobUpload) {
+        console.log('Using Vercel Blob upload for Google Drive file (mode:', uploadMode, ')');
+        
+        // Start upload with progress tracking
+        setInternalUploadProgress(0);
+        
+        // Create a unique filename to avoid collisions
+        const fileName = `${Date.now()}-${selectedFile.name}`;
+        
+        const blobUpload = await upload(fileName, selectedFile, {
+          access: 'public',
+          handleUploadUrl: '/api/audio-upload',
+          onUploadProgress: (progressEvent) => {
+            const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+            setInternalUploadProgress(progress);
+          },
+        });
+        
+        setInternalUploadProgress(100);
+        console.log('Google Drive file uploaded to Blob:', blobUpload.url);
+        
+        // Variable to store the recording ID if created
+        let recordingId: string | undefined;
+        
+        // Create a recording entry manually for development environments
+        if (window.location.hostname === 'localhost') {
+          try {
+            console.log('Creating recording entry manually for local development (Google Drive file)');
+            const fileExtension = fileName.split('.').pop()?.toLowerCase() || '';
+            
+            // Map extensions to MIME types
+            const mimeTypes: Record<string, string> = {
+              mp3: 'audio/mpeg',
+              wav: 'audio/wav',
+              m4a: 'audio/x-m4a',
+              aac: 'audio/aac',
+              ogg: 'audio/ogg',
+              mp4: 'audio/mp4',
+            };
+            
+            const result = await createRecording({
+              file_name: blobUpload.pathname,
+              original_file_name: fileName,
+              file_size_bytes: selectedFile.size,
+              duration_seconds: null,
+              file_format: fileExtension,
+              mime_type: selectedFile.type || mimeTypes[fileExtension] || null,
+              storage_path: blobUpload.url,
+              user_id: null,
+              transcription_status: 'pending',
+              metadata: {
+                uploadedAt: new Date().toISOString(),
+                blobId: null,
+                uploadedFromLocalDev: true,
+                source: 'google_drive'
+              },
+            });
+            
+            if (result.data) {
+              recordingId = result.data.id;
+              console.log('Recording entry created successfully for local development with ID:', recordingId);
+            }
+          } catch (error) {
+            console.error('Error creating recording entry for local development:', error);
+          }
+        }
+        
+        // Now process the file from the Blob URL
+        onFileUpload(selectedFile, blobUpload.url, recordingId);
+      } else {
+        // For direct upload mode or smaller files in auto mode
+        console.log('Using direct upload for Google Drive file (mode:', uploadMode, ')');
+        onFileUpload(selectedFile);
+      }
+    } catch (error) {
+      console.error('Error processing Google Drive file:', error);
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to process audio file from Google Drive');
+      setProcessingFile(false);
+    }
+  }, [onFileUpload, uploadMode]);
+
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
@@ -221,6 +334,17 @@ export default function AudioUploader({ onFileUpload, isLoading, setUploadProgre
               )}
             </div>
           )}
+        </div>
+      </div>
+      
+      {/* Google Drive picker button */}
+      <div className="mt-4 flex justify-center">
+        <div className="text-center">
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">Or select audio from</p>
+          <GoogleDrivePicker 
+            onFileSelected={handleGoogleDriveFileSelected}
+            disabled={isLoading || processingFile}
+          />
         </div>
       </div>
       
