@@ -6,7 +6,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { OpenAI } from 'openai';
 // Import from Vercel Blob to fetch and delete uploaded files
 import { del } from '@vercel/blob';
-import { createTranscription, TranscriptSegmentData, updateRecording } from '../../../lib/supabase';
+import { createTranscription, TranscriptSegmentData, updateRecording, updateRecordingWithRetry } from '../../../lib/supabase';
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { cookies } from 'next/headers';
+import { createClient } from '@supabase/supabase-js';
+import { updateRecordingWithAuthClient } from '@/lib/supabase-server';
 
 // Check which transcription service to use
 const USE_DEEPGRAM = process.env.USE_DEEPGRAM === 'true';
@@ -38,12 +42,12 @@ interface DeepgramWord {
 }
 
 interface DeepgramUtterance {
-  transcript: string;
-  confidence: number;
-  words: DeepgramWord[];
   start: number;
   end: number;
+  confidence: number;
   speaker: number;
+  words: DeepgramWord[];
+  transcript?: string;
 }
 
 interface DeepgramAlternative {
@@ -56,13 +60,11 @@ interface DeepgramChannel {
   alternatives: DeepgramAlternative[];
 }
 
-interface DeepgramResults {
-  utterances?: DeepgramUtterance[];
-  channels?: DeepgramChannel[];
-}
-
 interface DeepgramResponse {
-  results: DeepgramResults;
+  results?: {
+    utterances?: DeepgramUtterance[];
+    channels?: DeepgramChannel[];
+  };
 }
 
 // Maximum file size for OpenAI Whisper (25MB in bytes)
@@ -80,6 +82,18 @@ export const config = {
 export async function POST(request: NextRequest) {
   try {
     console.log('API route called: /api/transcribe');
+    
+    // Initialize Supabase client for authentication
+    const cookiesStore = cookies();
+    const supabase = createRouteHandlerClient({ cookies: () => cookiesStore });
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    // Log session info for debugging
+    console.log('Authentication check:', {
+      isAuthenticated: !!session,
+      userId: session?.user?.id || 'not authenticated'
+    });
+    
     console.log(`Using transcription service: ${USE_DEEPGRAM ? 'Deepgram' : 'OpenAI Whisper'}`);
     
     // Set max file size based on the service being used
@@ -254,7 +268,7 @@ async function processWithDeepgram(
   // Map Deepgram utterances to our segment format
   const processedSegments = utterances.map((utterance: DeepgramUtterance) => {
     return {
-      text: utterance.transcript,
+      text: utterance.words.map(word => word.word).join(' '),
       startTime: utterance.start,
       endTime: utterance.end,
       speaker: `Speaker ${utterance.speaker}`,
@@ -298,14 +312,40 @@ async function processWithDeepgram(
     // If we have a recording ID, store the transcription
     if (recordingId) {
       try {
+        // Get the user ID from the session
+        const supabase = createRouteHandlerClient({ cookies: () => cookies() });
+        const { data: { session } } = await supabase.auth.getSession();
+        const userId = session?.user?.id;
+        
         // Update recording status to processing
-        await updateRecording(recordingId, {
-          transcription_status: 'processing',
+        console.log(`[processWithDeepgram] Updating recording ${recordingId} status to 'processing'`);
+        await updateRecordingWithAuthClient(recordingId, {
+          transcription_status: 'processing'
         });
         
         // Store the transcription
-        await createTranscription(recordingId, segments as TranscriptSegmentData[]);
+        console.log(`[processWithDeepgram] Creating transcription for recording ${recordingId}`);
+        const authClient = createRouteHandlerClient({ cookies: () => cookies() });
+        const transcription = await createTranscription(
+          recordingId, 
+          segments as TranscriptSegmentData[],
+          undefined, // totalDuration
+          authClient // Pass the authenticated client
+        );
         console.log('Transcription stored in database for recording:', recordingId);
+        
+        // Try to update the recording with retry mechanism using authenticated client
+        console.log(`[processWithDeepgram] Ensuring recording status is updated with authenticated client privileges`);
+        const updateResult = await updateRecordingWithAuthClient(recordingId, {
+          transcription_status: 'completed',
+          duration_seconds: transcription.total_duration_seconds
+        });
+        
+        if (updateResult.error) {
+          console.error(`[processWithDeepgram] Failed to update recording after retries:`, updateResult.error);
+        } else {
+          console.log(`[processWithDeepgram] Successfully updated recording status to 'completed' with authenticated client`);
+        }
         
         // Clean up the blob file if it exists
         if (blobUrl) {
@@ -332,14 +372,40 @@ async function processWithDeepgram(
   // If we have a recording ID, store the transcription
   if (recordingId) {
     try {
+      // Get the user ID from the session
+      const supabase = createRouteHandlerClient({ cookies: () => cookies() });
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id;
+      
       // Update recording status to processing
-      await updateRecording(recordingId, {
-        transcription_status: 'processing',
+      console.log(`[processWithDeepgram] Updating recording ${recordingId} status to 'processing'`);
+      await updateRecordingWithAuthClient(recordingId, {
+        transcription_status: 'processing'
       });
       
       // Store the transcription
-      await createTranscription(recordingId, processedSegments);
+      console.log(`[processWithDeepgram] Creating transcription for recording ${recordingId}`);
+      const authClient = createRouteHandlerClient({ cookies: () => cookies() });
+      const transcription = await createTranscription(
+        recordingId, 
+        processedSegments,
+        undefined, // totalDuration
+        authClient // Pass the authenticated client
+      );
       console.log('Transcription stored in database for recording:', recordingId);
+      
+      // Try to update the recording with retry mechanism using authenticated client
+      console.log(`[processWithDeepgram] Ensuring recording status is updated with authenticated client privileges`);
+      const updateResult = await updateRecordingWithAuthClient(recordingId, {
+        transcription_status: 'completed',
+        duration_seconds: transcription.total_duration_seconds
+      });
+      
+      if (updateResult.error) {
+        console.error(`[processWithDeepgram] Failed to update recording after retries:`, updateResult.error);
+      } else {
+        console.log(`[processWithDeepgram] Successfully updated recording status to 'completed' with authenticated client`);
+      }
       
       // Clean up the blob file if it exists
       if (blobUrl) {
@@ -405,14 +471,40 @@ async function processWithOpenAI(
   // If we have a recording ID, store the transcription
   if (recordingId) {
     try {
+      // Get the user ID from the session
+      const supabase = createRouteHandlerClient({ cookies: () => cookies() });
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id;
+      
       // Update recording status to processing
-      await updateRecording(recordingId, {
-        transcription_status: 'processing',
+      console.log(`[processWithOpenAI] Updating recording ${recordingId} status to 'processing'`);
+      await updateRecordingWithAuthClient(recordingId, {
+        transcription_status: 'processing'
       });
       
       // Store the transcription
-      await createTranscription(recordingId, processedSegments);
+      console.log(`[processWithOpenAI] Creating transcription for recording ${recordingId}`);
+      const authClient = createRouteHandlerClient({ cookies: () => cookies() });
+      const transcription = await createTranscription(
+        recordingId, 
+        processedSegments,
+        undefined, // totalDuration
+        authClient // Pass the authenticated client
+      );
       console.log('Transcription stored in database for recording:', recordingId);
+      
+      // Try to update the recording with retry mechanism using authenticated client
+      console.log(`[processWithOpenAI] Ensuring recording status is updated with authenticated client privileges`);
+      const updateResult = await updateRecordingWithAuthClient(recordingId, {
+        transcription_status: 'completed',
+        duration_seconds: transcription.total_duration_seconds
+      });
+      
+      if (updateResult.error) {
+        console.error(`[processWithOpenAI] Failed to update recording after retries:`, updateResult.error);
+      } else {
+        console.log(`[processWithOpenAI] Successfully updated recording status to 'completed' with authenticated client`);
+      }
       
       // Clean up the blob file if it exists
       if (blobUrl) {

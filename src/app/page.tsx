@@ -7,6 +7,7 @@ import MeetingNotes from './components/MeetingNotes';
 import RecordingsDrawer from './components/RecordingsDrawer';
 import DrawerToggleButton from './components/DrawerToggleButton';
 import ProcessStatus, { ProcessStage } from './components/ProcessStatus';
+import { useAuth } from '@/context/AuthContext';
 
 interface TranscriptSegment {
   text: string;
@@ -28,6 +29,7 @@ interface ErrorWithSuggestion {
 }
 
 export default function Home() {
+  const { user } = useAuth();
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isGeneratingNotes, setIsGeneratingNotes] = useState(false);
   const [transcript, setTranscript] = useState<TranscriptSegment[]>([]);
@@ -85,6 +87,7 @@ export default function Home() {
       const response = await fetch('/api/transcribe', {
         method: 'POST',
         body: formData,
+        credentials: 'include',
       });
 
       console.log('Response received:', {
@@ -155,6 +158,7 @@ export default function Home() {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify(requestData),
       });
       
@@ -187,6 +191,7 @@ export default function Home() {
       }
       
       const data = await response.json();
+      console.log('Received recording data:', data);
       
       setCurrentRecordingId(recordingId);
       
@@ -194,8 +199,9 @@ export default function Home() {
         setCurrentRecordingName(data.recording.original_file_name);
       }
       
-      if (data.transcription && data.transcription.segments) {
-        const mappedTranscript = data.transcription.segments.map((segment: any) => ({
+      // Handle segments directly from the response
+      if (data.segments && Array.isArray(data.segments)) {
+        const mappedTranscript = data.segments.map((segment: any) => ({
           text: segment.text,
           startTime: segment.start_time,
           endTime: segment.end_time,
@@ -203,17 +209,17 @@ export default function Home() {
         }));
         
         const formattedTranscript = combineConsecutiveSegments(mappedTranscript);
-        
         setTranscript(formattedTranscript);
-        
-        if (data.meetingNotes) {
-          setNotes({
-            summary: data.meetingNotes.summary || '',
-            keyPoints: data.meetingNotes.key_points || [],
-            actionItems: data.meetingNotes.action_items || [],
-            decisions: data.meetingNotes.decisions || []
-          });
-        }
+      }
+      
+      // Handle notes if they exist
+      if (data.notes) {
+        setNotes({
+          summary: data.notes.summary || '',
+          keyPoints: data.notes.key_points || [],
+          actionItems: data.notes.action_items || [],
+          decisions: data.notes.decisions || []
+        });
       }
     } catch (err) {
       console.error('Error loading recording:', err);
@@ -334,20 +340,24 @@ export default function Home() {
         </div>
       </main>
       
-      <DrawerToggleButton onClick={toggleDrawer} isDrawerOpen={isDrawerOpen} />
-      
-      <RecordingsDrawer 
-        isOpen={isDrawerOpen}
-        onClose={toggleDrawer}
-        onSelectRecording={handleSelectRecording}
-        selectedRecordingId={currentRecordingId}
-      />
-      
-      {isDrawerOpen && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-50 z-20 md:hidden"
-          onClick={toggleDrawer}
-        ></div>
+      {user && (
+        <>
+          <DrawerToggleButton onClick={toggleDrawer} isDrawerOpen={isDrawerOpen} />
+          
+          <RecordingsDrawer 
+            isOpen={isDrawerOpen}
+            onClose={toggleDrawer}
+            onSelectRecording={handleSelectRecording}
+            selectedRecordingId={currentRecordingId}
+          />
+          
+          {isDrawerOpen && (
+            <div 
+              className="fixed inset-0 bg-black bg-opacity-50 z-20 md:hidden"
+              onClick={toggleDrawer}
+            ></div>
+          )}
+        </>
       )}
     </div>
   );

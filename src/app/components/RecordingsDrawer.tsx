@@ -31,13 +31,23 @@ export default function RecordingsDrawer({
     setIsLoading(true);
     setError(null);
     
+    console.log('Fetching recordings with credentials included...');
+    
     try {
-      const response = await fetch('/api/recordings');
+      const response = await fetch('/api/recordings', {
+        credentials: 'include'
+      });
+      console.log('Response status:', response.status, response.statusText);
+      
       if (!response.ok) {
-        throw new Error('Failed to fetch recordings');
+        console.error('Response not OK:', response.status, response.statusText);
+        const errorText = await response.text();
+        console.error('Error response body:', errorText);
+        throw new Error(`Failed to fetch recordings: ${response.status} ${response.statusText}`);
       }
       
       const data = await response.json();
+      console.log('Recordings data received:', data);
       setRecordings(data.recordings || []);
     } catch (err) {
       console.error('Error fetching recordings:', err);

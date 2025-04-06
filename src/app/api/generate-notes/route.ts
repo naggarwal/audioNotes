@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { OpenAI } from 'openai';
-import { saveMeetingNotes } from '../../../lib/supabase';
+import { saveMeetingNotesWithAuthClient } from '../../../lib/supabase-server';
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { cookies } from 'next/headers';
 
 // Initialize OpenAI client
 const openai = new OpenAI({
@@ -18,6 +20,25 @@ interface TranscriptSegment {
 export async function POST(request: NextRequest) {
   try {
     console.log('API route called: /api/generate-notes');
+    
+    // Initialize Supabase client for authentication
+    const supabase = createRouteHandlerClient({ cookies: () => cookies() });
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    // Check if user is authenticated
+    if (!session) {
+      console.log('User not authenticated');
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 }
+      );
+    }
+    
+    // Log session info for debugging
+    console.log('Authentication check:', {
+      isAuthenticated: true,
+      userId: session.user.id
+    });
     
     const body = await request.json();
     const { transcript, instructions, recordingId } = body;
@@ -98,7 +119,7 @@ export async function POST(request: NextRequest) {
       
       // Save notes to the database if we have a recording ID
       if (recordingId) {
-        const { data: savedNotes, error } = await saveMeetingNotes(recordingId, notes);
+        const { data: savedNotes, error } = await saveMeetingNotesWithAuthClient(recordingId, notes);
         
         if (error) {
           console.error('Error saving meeting notes:', error);

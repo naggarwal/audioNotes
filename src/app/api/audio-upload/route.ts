@@ -1,6 +1,8 @@
 import { handleUpload, type HandleUploadBody } from '@vercel/blob/client';
 import { NextResponse } from 'next/server';
 import { createRecording } from '../../../lib/supabase';
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { cookies } from 'next/headers';
 
 // Define custom interfaces for blob handling
 interface CustomUploadBody {
@@ -21,6 +23,13 @@ interface ExtendedBlobResult extends BlobResult {
 
 export async function POST(request: Request): Promise<NextResponse> {
   const body = await request.json();
+  
+  // Create a Supabase client
+  const supabase = createRouteHandlerClient({ cookies: () => cookies() });
+  
+  // Get the current user's session if authenticated
+  const { data: { session } } = await supabase.auth.getSession();
+  const userId = session?.user?.id || null;
 
   try {
     const jsonResponse = await handleUpload({
@@ -66,6 +75,7 @@ export async function POST(request: Request): Promise<NextResponse> {
             originalFileName: customBody.filename || pathname,
             fileFormat,
             mimeType: mimeTypes[fileExtension] || null,
+            userId, // Pass the user ID in the token payload
           }),
         };
       },
@@ -80,7 +90,7 @@ export async function POST(request: Request): Promise<NextResponse> {
           // Cast blob to extended type
           const extendedBlob = blob as unknown as ExtendedBlobResult;
           
-          // Store recording information in the database without user_id
+          // Store recording information in the database with user_id if available
           await createRecording({
             file_name: extendedBlob.pathname,
             original_file_name: payload.originalFileName || extendedBlob.pathname,
@@ -89,7 +99,7 @@ export async function POST(request: Request): Promise<NextResponse> {
             file_format: payload.fileFormat,
             mime_type: extendedBlob.contentType || payload.mimeType,
             storage_path: extendedBlob.url,
-            user_id: null, // No user authentication required
+            user_id: payload.userId, // Use the user ID from payload
             transcription_status: 'pending',
             metadata: {
               uploadedAt: new Date().toISOString(),
