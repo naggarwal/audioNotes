@@ -28,7 +28,11 @@ export default function Login() {
       const { error } = await signIn(email, password);
       
       if (error) {
-        setError(error.message);
+        if (error.message === 'Request rate limit reached') {
+          setError('Too many login attempts. Please wait a moment before trying again.');
+        } else {
+          setError(error.message);
+        }
         setIsLoading(false);
         return;
       }
