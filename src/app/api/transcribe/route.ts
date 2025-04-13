@@ -102,9 +102,24 @@ export async function POST(request: NextRequest) {
     console.log('Parsing form data...');
     const formData = await request.formData();
     
+    // Extract tags if provided
+    const tagIdsString = formData.get('tagIds') as string;
+    let tagIds: string[] = [];
+
+    if (tagIdsString) {
+      try {
+        tagIds = JSON.parse(tagIdsString);
+        console.log('Received tag IDs:', tagIds);
+      } catch (e) {
+        console.error('Error parsing tagIds:', e);
+      }
+    }
+
+    // If recordingId is provided, use it; otherwise create a new recording
+    let recordingId = formData.get('recordingId') as string;
+    
     // Check if we're receiving a blob URL or a direct file upload
     const blobUrl = formData.get('blobUrl') as string;
-    const recordingId = formData.get('recordingId') as string;
     
     let buffer: Buffer;
     let fileName: string;
@@ -194,6 +209,29 @@ export async function POST(request: NextRequest) {
         result = await processWithDeepgram(audioFile, buffer, recordingId, blobUrl);
       } else {
         result = await processWithOpenAI(audioFile, buffer, recordingId, blobUrl);
+      }
+      
+      // After creating the recording, associate tags if any were provided
+      if (recordingId && tagIds.length > 0) {
+        try {
+          console.log(`Associating ${tagIds.length} tags with recording ${recordingId}`);
+          
+          // Create an array of objects for insertion into recording_tags table
+          const recordingTags = tagIds.map(tagId => ({
+            recording_id: recordingId,
+            tag_id: tagId
+          }));
+          
+          const { error: tagError } = await supabase
+            .from('recording_tags')
+            .insert(recordingTags);
+          
+          if (tagError) {
+            console.error('Error associating tags with recording:', tagError);
+          }
+        } catch (err) {
+          console.error('Unexpected error associating tags with recording:', err);
+        }
       }
       
       return result;

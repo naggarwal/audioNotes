@@ -61,6 +61,7 @@ export const config = {
     '/api/recordings/:path*',
     '/api/transcribe/:path*',
     '/api/generate-notes/:path*',
+    '/api/tags/:path*',
     
     // Protected pages
     '/dashboard/:path*',

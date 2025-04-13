@@ -44,6 +44,40 @@ export interface Database {
           status?: string
         }
       }
+      tags: {
+        Row: {
+          id: string
+          name: string
+          user_id: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          user_id: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          user_id?: string
+          created_at?: string
+        }
+      }
+      recording_tags: {
+        Row: {
+          recording_id: string
+          tag_id: string
+        }
+        Insert: {
+          recording_id: string
+          tag_id: string
+        }
+        Update: {
+          recording_id?: string
+          tag_id?: string
+        }
+      }
       transcriptions: {
         Row: {
           id: string

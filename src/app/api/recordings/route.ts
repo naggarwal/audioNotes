@@ -1,14 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
+import { findRecordingsByTags } from '@/lib/supabase';
+import type { Database } from '@/lib/database.types';
 
 export async function GET(request: NextRequest) {
   console.log('API route called: /api/recordings');
   
   try {
-    // Initialize Supabase client for authentication using cookies
-    // This automatically transfers session information from the browser
-    const supabase = createRouteHandlerClient({ cookies: () => cookies() });
+    // Initialize Supabase client with proper cookie handling
+    const cookieStore = cookies();
+    
+    // Pass the lambda function correctly - Next.js 14 needs it this way
+    const supabase = createRouteHandlerClient<Database>({ 
+      cookies: () => cookieStore 
+    });
     
     // Get user session from cookies
     const { data: { session } } = await supabase.auth.getSession();
@@ -29,14 +35,41 @@ export async function GET(request: NextRequest) {
       );
     }
     
-    console.log('Fetching recordings for user:', userId);
+    // Check for tag filtering
+    const url = new URL(request.url);
+    const tagIds = url.searchParams.get('tags');
     
-    // The authenticated client (supabase) will automatically filter records based on RLS policies
-    // No need to manually filter by user_id, RLS will handle it
-    const { data, error } = await supabase
-      .from('recordings')
-      .select('*')
-      .order('created_at', { ascending: false });
+    let result;
+    
+    if (tagIds) {
+      // Parse the comma-separated tag IDs
+      const tagIdArray = tagIds.split(',').filter(id => id.trim() !== '');
+      
+      if (tagIdArray.length > 0) {
+        console.log(`Filtering recordings for user ${userId} by tags:`, tagIdArray);
+        
+        // Use the specialized function to find recordings by tags
+        result = await findRecordingsByTags(tagIdArray, userId, supabase);
+      } else {
+        // Fallback to regular query if no valid tag IDs
+        console.log('Fetching all recordings for user:', userId);
+        
+        result = await supabase
+          .from('recordings')
+          .select('*')
+          .order('created_at', { ascending: false });
+      }
+    } else {
+      // No tag filtering, fetch all recordings
+      console.log('Fetching all recordings for user:', userId);
+      
+      result = await supabase
+        .from('recordings')
+        .select('*')
+        .order('created_at', { ascending: false });
+    }
+    
+    const { data, error } = result;
     
     if (error) {
       console.error('Database error fetching recordings:', error);

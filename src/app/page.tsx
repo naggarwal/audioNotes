@@ -8,6 +8,8 @@ import RecordingsDrawer from './components/RecordingsDrawer';
 import DrawerToggleButton from './components/DrawerToggleButton';
 import ProcessStatus, { ProcessStage } from './components/ProcessStatus';
 import { useAuth } from '@/context/AuthContext';
+import TagSelector from '@/components/TagSelector';
+import { Tag } from '@/lib/supabase';
 
 interface TranscriptSegment {
   text: string;
@@ -41,6 +43,12 @@ export default function Home() {
   const [currentRecordingName, setCurrentRecordingName] = useState<string | null>(null);
   const [processStage, setProcessStage] = useState<ProcessStage>(ProcessStage.Idle);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [currentRecordingTags, setCurrentRecordingTags] = useState<Tag[]>([]);
+  const [availableTags, setAvailableTags] = useState<Tag[]>([]);
+  const [isLoadingTags, setIsLoadingTags] = useState(false);
+  const [isSavingTags, setIsSavingTags] = useState(false);
+  const [newRecordingTags, setNewRecordingTags] = useState<Tag[]>([]);
+  const [file, setFile] = useState<File | null>(null);
 
   const handleFileUpload = async (file: File, blobUrl?: string, recordingId?: string) => {
     try {
@@ -52,6 +60,9 @@ export default function Home() {
         blobUrl: blobUrl || 'none',
         recordingId: recordingId || 'none'
       });
+      
+      // Set the file state
+      setFile(file);
       
       if (blobUrl) {
         setProcessStage(ProcessStage.Transcribing);
@@ -79,6 +90,12 @@ export default function Home() {
       
       if (recordingId) {
         formData.append('recordingId', recordingId);
+      }
+      
+      // Add tags to the FormData if any are selected
+      if (newRecordingTags.length > 0) {
+        const tagIds = newRecordingTags.map(tag => tag.id);
+        formData.append('tagIds', JSON.stringify(tagIds));
       }
       
       console.log('FormData created, sending to API...');
@@ -116,6 +133,7 @@ export default function Home() {
         setError({ message: errorMessage, suggestion });
         setIsTranscribing(false);
         setProcessStage(ProcessStage.Idle);
+        setFile(null);
         return;
       }
       
@@ -124,14 +142,24 @@ export default function Home() {
         setTranscript(combinedTranscript);
         setCurrentRecordingName(file.name);
         setProcessStage(ProcessStage.Completed);
+        
+        // Reset file state on successful processing
+        setTimeout(() => {
+          setFile(null);
+        }, 1000); // Small delay to allow UI to update
       } else {
         setError({ message: 'No transcript was returned' });
         setProcessStage(ProcessStage.Idle);
+        setFile(null);
       }
+      
+      // Reset new recording tags after successful upload
+      setNewRecordingTags([]);
     } catch (error) {
       console.error('Error uploading file:', error);
       setError({ message: 'Error uploading file: ' + (error instanceof Error ? error.message : String(error)) });
       setProcessStage(ProcessStage.Idle);
+      setFile(null);
     } finally {
       setIsTranscribing(false);
     }
@@ -182,6 +210,7 @@ export default function Home() {
     setError(null);
     setTranscript([]);
     setNotes(null);
+    setCurrentRecordingTags([]);
     
     try {
       const response = await fetch(`/api/recordings/${recordingId}`);
@@ -197,6 +226,11 @@ export default function Home() {
       
       if (data.recording) {
         setCurrentRecordingName(data.recording.original_file_name);
+      }
+      
+      // Handle tags if they exist
+      if (data.tags && Array.isArray(data.tags)) {
+        setCurrentRecordingTags(data.tags);
       }
       
       // Handle segments directly from the response
@@ -259,6 +293,131 @@ export default function Home() {
     setIsDrawerOpen(!isDrawerOpen);
   };
 
+  // New method to fetch available tags
+  const fetchAvailableTags = async () => {
+    setIsLoadingTags(true);
+    
+    try {
+      const response = await fetch('/api/tags', {
+        credentials: 'include'
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch tags: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      setAvailableTags(data.tags || []);
+    } catch (err) {
+      console.error('Error fetching available tags:', err);
+    } finally {
+      setIsLoadingTags(false);
+    }
+  };
+  
+  // Load available tags on component mount
+  useEffect(() => {
+    fetchAvailableTags();
+  }, []);
+  
+  // Create a new tag
+  const handleCreateTag = async (tagName: string): Promise<Tag | null> => {
+    try {
+      const response = await fetch('/api/tags', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ name: tagName }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to create tag: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      // Add the new tag to available tags
+      setAvailableTags(prev => [...prev, data.tag]);
+      
+      return data.tag;
+    } catch (err) {
+      console.error('Error creating tag:', err);
+      return null;
+    }
+  };
+  
+  // Add a tag to the current recording
+  const handleAddTagToRecording = async (tagId: string) => {
+    if (!currentRecordingId) return;
+    
+    setIsSavingTags(true);
+    
+    try {
+      const response = await fetch(`/api/recordings/${currentRecordingId}/tags`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ tagIds: [tagId] }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to add tag: ${response.status}`);
+      }
+      
+      // Update the current recording tags list
+      const tagToAdd = availableTags.find(tag => tag.id === tagId);
+      if (tagToAdd) {
+        setCurrentRecordingTags(prev => [...prev, tagToAdd]);
+      }
+    } catch (err) {
+      console.error('Error adding tag to recording:', err);
+    } finally {
+      setIsSavingTags(false);
+    }
+  };
+  
+  // Remove a tag from the current recording
+  const handleRemoveTagFromRecording = async (tagId: string) => {
+    if (!currentRecordingId) return;
+    
+    setIsSavingTags(true);
+    
+    try {
+      const response = await fetch(`/api/recordings/${currentRecordingId}/tags?tagId=${tagId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to remove tag: ${response.status}`);
+      }
+      
+      // Update the current recording tags list
+      setCurrentRecordingTags(prev => prev.filter(tag => tag.id !== tagId));
+    } catch (err) {
+      console.error('Error removing tag from recording:', err);
+    } finally {
+      setIsSavingTags(false);
+    }
+  };
+  
+  // Add a tag to a new recording before upload
+  const handleAddTagToNewRecording = (tagId: string) => {
+    const tagToAdd = availableTags.find(tag => tag.id === tagId);
+    if (tagToAdd && !newRecordingTags.some(tag => tag.id === tagId)) {
+      setNewRecordingTags(prev => [...prev, tagToAdd]);
+    }
+  };
+  
+  // Remove a tag from a new recording before upload
+  const handleRemoveTagFromNewRecording = (tagId: string) => {
+    setNewRecordingTags(prev => prev.filter(tag => tag.id !== tagId));
+  };
+
   return (
     <div className="min-h-screen flex flex-col">
       <main className="flex-1">
@@ -281,6 +440,23 @@ export default function Home() {
                 }
               }}
             />
+
+            {file && !isTranscribing && (
+              <div className="mt-4">
+                <h3 className="text-sm font-medium text-gray-700 dark:text-white mb-2">
+                  Add tags to this recording
+                </h3>
+                <TagSelector
+                  selectedTags={newRecordingTags}
+                  availableTags={availableTags}
+                  onAddTag={handleAddTagToNewRecording}
+                  onRemoveTag={handleRemoveTagFromNewRecording}
+                  onCreateTag={handleCreateTag}
+                  isLoading={isLoadingTags}
+                  className="mb-4"
+                />
+              </div>
+            )}
 
             {processStage !== ProcessStage.Idle && (
               <ProcessStatus 
@@ -321,9 +497,25 @@ export default function Home() {
 
             {currentRecordingName && transcript.length > 0 && (
               <div className="w-full max-w-4xl mx-auto">
-                <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-gray-100">
+                <h2 className="text-xl font-semibold mb-2 text-gray-900 dark:text-gray-100">
                   {currentRecordingName}
                 </h2>
+                
+                {currentRecordingId && !isLoadingRecording && (
+                  <div className="mb-6">
+                    <h3 className="text-sm font-medium text-gray-700 dark:text-white mb-2">
+                      Tags
+                    </h3>
+                    <TagSelector
+                      selectedTags={currentRecordingTags}
+                      availableTags={availableTags}
+                      onAddTag={handleAddTagToRecording}
+                      onRemoveTag={handleRemoveTagFromRecording}
+                      onCreateTag={handleCreateTag}
+                      isLoading={isLoadingTags || isSavingTags}
+                    />
+                  </div>
+                )}
               </div>
             )}
 

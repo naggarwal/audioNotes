@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { Database } from '@/lib/database.types';
+import { getRecordingTags } from '@/lib/supabase';
 
 export async function GET(
   request: Request
@@ -105,11 +106,19 @@ export async function GET(
       console.error('Error fetching notes:', notesError);
     }
     
+    // Get tags for the recording
+    const { data: tags, error: tagsError } = await getRecordingTags(recordingId, supabase);
+    
+    if (tagsError) {
+      console.error('Error fetching recording tags:', tagsError);
+    }
+    
     console.log('Successfully fetched recording data:', {
       hasRecording: !!recording,
       hasTranscription: !!transcription,
       segmentsCount: transcriptSegments.length,
-      hasNotes: !!notes
+      hasNotes: !!notes,
+      tagsCount: tags?.length || 0
     });
     
     // Return the response
@@ -117,7 +126,8 @@ export async function GET(
       recording,
       transcription: transcription || null,
       segments: transcriptSegments,
-      notes
+      notes,
+      tags: tags || []
     });
   } catch (error) {
     console.error('Unexpected error fetching recording:', error);

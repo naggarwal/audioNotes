@@ -86,6 +86,19 @@ export type MeetingNotes = {
   updated_at: string;
 };
 
+// Define types for tags
+export type Tag = {
+  id: string;
+  name: string;
+  user_id: string;
+  created_at: string;
+};
+
+export type RecordingTag = {
+  recording_id: string;
+  tag_id: string;
+};
+
 // Utility function to add delay between operations
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -618,4 +631,135 @@ export async function updateRecordingWithRetry(
   }
   
   return result;
+}
+
+/**
+ * Creates a new tag for a user
+ */
+export async function createTag(name: string, userId: string, client?: any) {
+  const activeClient = client || supabase;
+  
+  return await activeClient
+    .from('tags')
+    .insert({
+      name,
+      user_id: userId
+    })
+    .select()
+    .single();
+}
+
+/**
+ * Gets all tags for a user
+ */
+export async function getUserTags(userId: string, client?: any) {
+  const activeClient = client || supabase;
+  
+  return await activeClient
+    .from('tags')
+    .select('*')
+    .eq('user_id', userId)
+    .order('name', { ascending: true });
+}
+
+/**
+ * Add tags to a recording
+ * @param recordingId - The ID of the recording
+ * @param tagIds - Array of tag IDs to associate with the recording
+ */
+export async function addTagsToRecording(recordingId: string, tagIds: string[], client?: any) {
+  const activeClient = client || supabase;
+  
+  // Create an array of objects for insertion
+  const recordingTags = tagIds.map(tagId => ({
+    recording_id: recordingId,
+    tag_id: tagId
+  }));
+  
+  return await activeClient
+    .from('recording_tags')
+    .insert(recordingTags);
+}
+
+/**
+ * Remove a tag from a recording
+ */
+export async function removeTagFromRecording(recordingId: string, tagId: string, client?: any) {
+  const activeClient = client || supabase;
+  
+  return await activeClient
+    .from('recording_tags')
+    .delete()
+    .eq('recording_id', recordingId)
+    .eq('tag_id', tagId);
+}
+
+/**
+ * Get all tags for a specific recording
+ */
+export async function getRecordingTags(recordingId: string, client?: any) {
+  const activeClient = client || supabase;
+  
+  return await activeClient
+    .from('tags')
+    .select(`
+      id,
+      name,
+      created_at
+    `)
+    .eq('recording_tags.recording_id', recordingId)
+    .order('name', { ascending: true });
+}
+
+/**
+ * Find recordings by tag IDs (all tags must match)
+ */
+export async function findRecordingsByTags(tagIds: string[], userId: string, client?: any) {
+  const activeClient = client || supabase;
+  
+  try {
+    // First, get all recording_tags entries for the specified tags
+    const { data: tagAssociations, error: tagError } = await activeClient
+      .from('recording_tags')
+      .select('recording_id, tag_id')
+      .in('tag_id', tagIds);
+      
+    if (tagError) {
+      console.error('Error fetching tag associations:', tagError);
+      return { data: [], error: tagError };
+    }
+    
+    if (!tagAssociations || tagAssociations.length === 0) {
+      console.log('No recordings associated with the specified tags');
+      return { data: [], error: null };
+    }
+    
+    // Group by recording_id and count occurrences
+    const recordingCounts: Record<string, number> = {};
+    tagAssociations.forEach((assoc: { recording_id: string }) => {
+      recordingCounts[assoc.recording_id] = (recordingCounts[assoc.recording_id] || 0) + 1;
+    });
+    
+    // Only keep recordings that have ALL the requested tags
+    const matchingRecordingIds = Object.entries(recordingCounts)
+      .filter(([_, count]: [string, number]) => count >= tagIds.length)
+      .map(([recordingId, _]: [string, number]) => recordingId);
+    
+    if (matchingRecordingIds.length === 0) {
+      console.log('No recordings have all the specified tags');
+      return { data: [], error: null };
+    }
+    
+    // Now fetch the full recording data for these IDs
+    return await activeClient
+      .from('recordings')
+      .select('*')
+      .eq('user_id', userId)
+      .in('id', matchingRecordingIds)
+      .order('created_at', { ascending: false });
+      
+  } catch (error) {
+    console.error('Error in findRecordingsByTags:', error);
+    return { data: [], error };
+  }
 } 
