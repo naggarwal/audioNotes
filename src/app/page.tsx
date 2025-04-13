@@ -31,7 +31,7 @@ interface ErrorWithSuggestion {
 }
 
 export default function Home() {
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isGeneratingNotes, setIsGeneratingNotes] = useState(false);
   const [transcript, setTranscript] = useState<TranscriptSegment[]>([]);
@@ -418,139 +418,145 @@ export default function Home() {
     setNewRecordingTags(prev => prev.filter(tag => tag.id !== tagId));
   };
 
+  if (isLoading) {
+    return <div className="flex justify-center items-center h-screen">Loading...</div>;
+  }
+
   return (
-    <div className="min-h-screen flex flex-col">
-      <main className="flex-1">
-        <div className="max-w-6xl mx-auto px-4 py-8">
-          <h1 className="text-3xl font-bold text-center mb-8 text-gray-900 dark:text-gray-100">
-            Audio Meeting Notes
-          </h1>
+    <div className="flex h-screen">
+      <div className="flex-1 flex flex-col transition-all duration-300 ease-in-out" style={{ marginRight: isDrawerOpen ? '350px' : '0' }}>
+        <main className="flex-1 p-6 overflow-y-auto">
+          <div className="max-w-6xl mx-auto px-4 py-8">
+            <h1 className="text-3xl font-bold text-center mb-8 text-gray-900 dark:text-gray-100">
+              Audio Meeting Notes
+            </h1>
 
-          <div className="space-y-10">
-            <AudioUploader 
-              onFileUpload={handleFileUpload} 
-              isLoading={isTranscribing} 
-              setUploadProgress={(progress) => {
-                setUploadProgress(progress);
-                if (progress > 0 && processStage === ProcessStage.Idle) {
-                  setProcessStage(ProcessStage.Uploading);
-                }
-                if (progress === 100) {
-                  setProcessStage(ProcessStage.Transcribing);
-                }
-              }}
-            />
-
-            {file && !isTranscribing && (
-              <div className="mt-4">
-                <h3 className="text-sm font-medium text-gray-700 dark:text-white mb-2">
-                  Add tags to this recording
-                </h3>
-                <TagSelector
-                  selectedTags={newRecordingTags}
-                  availableTags={availableTags}
-                  onAddTag={handleAddTagToNewRecording}
-                  onRemoveTag={handleRemoveTagFromNewRecording}
-                  onCreateTag={handleCreateTag}
-                  isLoading={isLoadingTags}
-                  className="mb-4"
-                />
-              </div>
-            )}
-
-            {processStage !== ProcessStage.Idle && (
-              <ProcessStatus 
-                stage={processStage} 
-                uploadProgress={uploadProgress} 
+            <div className="space-y-10">
+              <AudioUploader 
+                onFileUpload={handleFileUpload} 
+                isLoading={isTranscribing} 
+                setUploadProgress={(progress) => {
+                  setUploadProgress(progress);
+                  if (progress > 0 && processStage === ProcessStage.Idle) {
+                    setProcessStage(ProcessStage.Uploading);
+                  }
+                  if (progress === 100) {
+                    setProcessStage(ProcessStage.Transcribing);
+                  }
+                }}
               />
-            )}
 
-            {error && (
-              <div className="w-full max-w-2xl mx-auto bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md p-4">
-                <div className="flex">
-                  <div className="flex-shrink-0">
-                    <svg className="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                    </svg>
-                  </div>
-                  <div className="ml-3">
-                    <h3 className="text-sm font-medium text-red-800 dark:text-red-200">Error</h3>
-                    <div className="mt-2 text-sm text-red-700 dark:text-red-300">
-                      <p>{error.message}</p>
-                      {error.suggestion && (
-                        <p className="mt-1 font-medium">{error.suggestion}</p>
-                      )}
+              {file && !isTranscribing && (
+                <div className="mt-4">
+                  <h3 className="text-sm font-medium text-gray-700 dark:text-white mb-2">
+                    Add tags to this recording
+                  </h3>
+                  <TagSelector
+                    selectedTags={newRecordingTags}
+                    availableTags={availableTags}
+                    onAddTag={handleAddTagToNewRecording}
+                    onRemoveTag={handleRemoveTagFromNewRecording}
+                    onCreateTag={handleCreateTag}
+                    isLoading={isLoadingTags}
+                    className="mb-4"
+                  />
+                </div>
+              )}
+
+              {processStage !== ProcessStage.Idle && (
+                <ProcessStatus 
+                  stage={processStage} 
+                  uploadProgress={uploadProgress} 
+                />
+              )}
+
+              {error && (
+                <div className="w-full max-w-2xl mx-auto bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md p-4">
+                  <div className="flex">
+                    <div className="flex-shrink-0">
+                      <svg className="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div className="ml-3">
+                      <h3 className="text-sm font-medium text-red-800 dark:text-red-200">Error</h3>
+                      <div className="mt-2 text-sm text-red-700 dark:text-red-300">
+                        <p>{error.message}</p>
+                        {error.suggestion && (
+                          <p className="mt-1 font-medium">{error.suggestion}</p>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {(isTranscribing || isLoadingRecording) && processStage === ProcessStage.Idle && (
-              <div className="w-full max-w-2xl mx-auto text-center py-12">
-                <div className="inline-block animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-                <p className="mt-4 text-gray-600 dark:text-gray-400">
-                  {isTranscribing ? 'Transcribing your audio file...' : 'Loading recording...'}
-                </p>
-              </div>
-            )}
+              {(isTranscribing || isLoadingRecording) && processStage === ProcessStage.Idle && (
+                <div className="w-full max-w-2xl mx-auto text-center py-12">
+                  <div className="inline-block animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+                  <p className="mt-4 text-gray-600 dark:text-gray-400">
+                    {isTranscribing ? 'Transcribing your audio file...' : 'Loading recording...'}
+                  </p>
+                </div>
+              )}
 
-            {currentRecordingName && transcript.length > 0 && (
-              <div className="w-full max-w-4xl mx-auto">
-                <h2 className="text-xl font-semibold mb-2 text-gray-900 dark:text-gray-100">
-                  {currentRecordingName}
-                </h2>
-                
-                {currentRecordingId && !isLoadingRecording && (
-                  <div className="mb-6">
-                    <h3 className="text-sm font-medium text-gray-700 dark:text-white mb-2">
-                      Tags
-                    </h3>
-                    <TagSelector
-                      selectedTags={currentRecordingTags}
-                      availableTags={availableTags}
-                      onAddTag={handleAddTagToRecording}
-                      onRemoveTag={handleRemoveTagFromRecording}
-                      onCreateTag={handleCreateTag}
-                      isLoading={isLoadingTags || isSavingTags}
-                    />
-                  </div>
-                )}
-              </div>
-            )}
+              {currentRecordingName && transcript.length > 0 && (
+                <div className="w-full max-w-4xl mx-auto">
+                  <h2 className="text-xl font-semibold mb-2 text-gray-900 dark:text-gray-100">
+                    {currentRecordingName}
+                  </h2>
+                  
+                  {currentRecordingId && !isLoadingRecording && (
+                    <div className="mb-6">
+                      <h3 className="text-sm font-medium text-gray-700 dark:text-white mb-2">
+                        Tags
+                      </h3>
+                      <TagSelector
+                        selectedTags={currentRecordingTags}
+                        availableTags={availableTags}
+                        onAddTag={handleAddTagToRecording}
+                        onRemoveTag={handleRemoveTagFromRecording}
+                        onCreateTag={handleCreateTag}
+                        isLoading={isLoadingTags || isSavingTags}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
 
-            {notes && <MeetingNotes notes={notes} />}
+              {notes && <MeetingNotes notes={notes} />}
 
-            {transcript.length > 0 && (
-              <TranscriptDisplay 
-                transcript={transcript} 
-                isGeneratingNotes={isGeneratingNotes}
-                onGenerateNotes={handleGenerateNotes}
-              />
-            )}
+              {transcript.length > 0 && (
+                <TranscriptDisplay 
+                  transcript={transcript} 
+                  isGeneratingNotes={isGeneratingNotes}
+                  onGenerateNotes={handleGenerateNotes}
+                />
+              )}
+            </div>
           </div>
-        </div>
-      </main>
-      
-      {user && (
-        <>
-          <DrawerToggleButton onClick={toggleDrawer} isDrawerOpen={isDrawerOpen} />
-          
-          <RecordingsDrawer 
-            isOpen={isDrawerOpen}
-            onClose={toggleDrawer}
-            onSelectRecording={handleSelectRecording}
-            selectedRecordingId={currentRecordingId}
-          />
-          
-          {isDrawerOpen && (
-            <div 
-              className="fixed inset-0 bg-black bg-opacity-50 z-20 md:hidden"
-              onClick={toggleDrawer}
-            ></div>
-          )}
-        </>
-      )}
+        </main>
+        
+        {user && (
+          <>
+            <DrawerToggleButton onClick={toggleDrawer} isDrawerOpen={isDrawerOpen} />
+            
+            <RecordingsDrawer 
+              isOpen={isDrawerOpen}
+              onClose={toggleDrawer}
+              onSelectRecording={handleSelectRecording}
+              selectedRecordingId={currentRecordingId}
+            />
+            
+            {isDrawerOpen && (
+              <div 
+                className="fixed inset-0 bg-black bg-opacity-50 z-20 md:hidden"
+                onClick={toggleDrawer}
+              ></div>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }
