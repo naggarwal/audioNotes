@@ -153,7 +153,7 @@ export default function Profile() {
               type="email"
               disabled
               value={user?.email || ''}
-              className="mt-1 block w-full rounded-md border border-gray-300 bg-gray-100 px-3 py-2"
+              className="mt-1 block w-full rounded-md border border-gray-300 bg-gray-100 px-3 py-2 text-gray-700"
             />
             <p className="mt-1 text-xs text-gray-500">Email cannot be changed</p>
           </div>
@@ -168,7 +168,7 @@ export default function Profile() {
               type="text"
               value={profile.username || ''}
               onChange={handleChange}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 focus:border-blue-500 focus:outline-none"
               placeholder="Choose a username"
             />
           </div>
@@ -183,7 +183,7 @@ export default function Profile() {
               type="text"
               value={profile.full_name || ''}
               onChange={handleChange}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 focus:border-blue-500 focus:outline-none"
               placeholder="Your full name"
             />
           </div>
@@ -198,7 +198,7 @@ export default function Profile() {
               type="text"
               value={profile.avatar_url || ''}
               onChange={handleChange}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 focus:border-blue-500 focus:outline-none"
               placeholder="https://example.com/avatar.jpg"
             />
           </div>
