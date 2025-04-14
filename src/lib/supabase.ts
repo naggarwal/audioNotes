@@ -700,6 +700,19 @@ export async function removeTagFromRecording(recordingId: string, tagId: string,
 export async function getRecordingTags(recordingId: string, client?: any) {
   const activeClient = client || supabase;
   
+  // First, get the tag IDs associated with this recording
+  const { data: tagAssociations, error: tagError } = await activeClient
+    .from('recording_tags')
+    .select('tag_id')
+    .eq('recording_id', recordingId);
+    
+  if (tagError || !tagAssociations || tagAssociations.length === 0) {
+    return { data: [], error: tagError };
+  }
+  
+  // Get all tag details from the tags table
+  const tagIds = tagAssociations.map((assoc: { tag_id: string }) => assoc.tag_id);
+  
   return await activeClient
     .from('tags')
     .select(`
@@ -707,7 +720,7 @@ export async function getRecordingTags(recordingId: string, client?: any) {
       name,
       created_at
     `)
-    .eq('recording_tags.recording_id', recordingId)
+    .in('id', tagIds)
     .order('name', { ascending: true });
 }
 

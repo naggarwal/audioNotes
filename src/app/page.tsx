@@ -233,6 +233,9 @@ export default function Home() {
         setCurrentRecordingTags(data.tags);
       }
       
+      // Also refresh available tags to ensure dropdown is up-to-date
+      await fetchAvailableTags();
+      
       // Handle segments directly from the response
       if (data.segments && Array.isArray(data.segments)) {
         const mappedTranscript = data.segments.map((segment: any) => ({
@@ -373,6 +376,9 @@ export default function Home() {
       if (tagToAdd) {
         setCurrentRecordingTags(prev => [...prev, tagToAdd]);
       }
+      
+      // Refresh available tags to keep the list up-to-date
+      await fetchAvailableTags();
     } catch (err) {
       console.error('Error adding tag to recording:', err);
     } finally {
@@ -398,6 +404,9 @@ export default function Home() {
       
       // Update the current recording tags list
       setCurrentRecordingTags(prev => prev.filter(tag => tag.id !== tagId));
+      
+      // Refresh available tags to keep the list up-to-date
+      await fetchAvailableTags();
     } catch (err) {
       console.error('Error removing tag from recording:', err);
     } finally {
