@@ -6,16 +6,20 @@ import type { Database } from '@/lib/database.types';
 
 // GET: Fetch all tags for the current user
 export async function GET(request: NextRequest) {
-  console.log('API route called: /api/tags');
+  console.log('API route called: GET /api/tags');
   
   try {
     // Initialize Supabase client with proper cookie handling
-    const supabase = createRouteHandlerClient<Database>({ 
-      cookies 
-    });
+    const supabase = createRouteHandlerClient<Database>({ cookies });
     
-    // Get user session from cookies
-    const { data: { session } } = await supabase.auth.getSession();
+    // Get user session using the Auth Helper client
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+    // Handle potential errors getting the session
+    if (sessionError) {
+      console.error('Error getting session in /api/tags:', sessionError);
+      return NextResponse.json({ error: 'Failed to get session', details: sessionError.message }, { status: 500 });
+    }
     
     // Log session info for debugging
     console.log('Authentication check for tags:', {
@@ -35,13 +39,13 @@ export async function GET(request: NextRequest) {
     
     console.log('Fetching tags for user:', userId);
     
-    // The authenticated client (supabase) will automatically filter records based on RLS policies
-    const { data, error } = await getUserTags(userId, supabase);
+    // Pass the authenticated client to the database function
+    const { data, error: dbError } = await getUserTags(userId, supabase);
     
-    if (error) {
-      console.error('Database error fetching tags:', error);
+    if (dbError) {
+      console.error('Database error fetching tags:', dbError);
       return NextResponse.json(
-        { error: 'Failed to fetch tags', details: error.message },
+        { error: 'Failed to fetch tags', details: dbError.message },
         { status: 500 }
       );
     }
@@ -63,12 +67,16 @@ export async function POST(request: NextRequest) {
   
   try {
     // Initialize Supabase client with proper cookie handling
-    const supabase = createRouteHandlerClient<Database>({ 
-      cookies 
-    });
+    const supabase = createRouteHandlerClient<Database>({ cookies });
     
-    // Get user session from cookies
-    const { data: { session } } = await supabase.auth.getSession();
+    // Get user session using the Auth Helper client
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+    // Handle potential errors getting the session
+    if (sessionError) {
+      console.error('Error getting session in POST /api/tags:', sessionError);
+      return NextResponse.json({ error: 'Failed to get session', details: sessionError.message }, { status: 500 });
+    }
     
     // Verify user is authenticated
     const userId = session?.user?.id;
@@ -94,21 +102,21 @@ export async function POST(request: NextRequest) {
     
     console.log(`Creating tag "${name}" for user: ${userId}`);
     
-    // Create the tag
-    const { data, error } = await createTag(name.trim(), userId, supabase);
+    // Create the tag using the authenticated client
+    const { data, error: dbError } = await createTag(name.trim(), userId, supabase);
     
-    if (error) {
+    if (dbError) {
       // Check if it's a unique constraint violation
-      if (error.code === '23505') {
+      if (dbError.code === '23505') {
         return NextResponse.json(
           { error: 'Tag already exists' },
           { status: 409 }
         );
       }
       
-      console.error('Database error creating tag:', error);
+      console.error('Database error creating tag:', dbError);
       return NextResponse.json(
-        { error: 'Failed to create tag', details: error.message },
+        { error: 'Failed to create tag', details: dbError.message },
         { status: 500 }
       );
     }

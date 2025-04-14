@@ -28,11 +28,9 @@ export default function Login() {
       const { error } = await signIn(email, password);
       
       if (error) {
-        if (error.message === 'Request rate limit reached') {
-          setError('Too many login attempts. Please wait a moment before trying again.');
-        } else {
-          setError(error.message);
-        }
+        // Display the error message directly from AuthContext
+        // The rate limit errors are now handled there with user-friendly messages
+        setError(error.message);
         setIsLoading(false);
         return;
       }
@@ -61,7 +59,20 @@ export default function Login() {
         {error && (
           <div className="rounded-md bg-red-50 p-4">
             <div className="flex">
-              <div className="text-sm text-red-700">{error}</div>
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <div className="text-sm text-red-700">{error}</div>
+                {error.includes('wait') && (
+                  <p className="mt-2 text-xs text-red-600">
+                    Supabase has rate limiting to protect against brute force attacks.
+                    Please try again after waiting.
+                  </p>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -82,6 +93,7 @@ export default function Login() {
                 onChange={(e) => setEmail(e.target.value)}
                 className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none"
                 placeholder="you@example.com"
+                disabled={isLoading}
               />
             </div>
 
@@ -99,6 +111,7 @@ export default function Login() {
                 onChange={(e) => setPassword(e.target.value)}
                 className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none"
                 placeholder="Your password"
+                disabled={isLoading}
               />
             </div>
           </div>
