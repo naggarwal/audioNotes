@@ -22,9 +22,8 @@ export async function GET(request: NextRequest) {
   
   try {
     // Initialize Supabase client with proper cookie handling
-    const cookieStore = cookies();
     const supabase = createRouteHandlerClient<Database>({ 
-      cookies: () => cookieStore 
+      cookies 
     });
     
     // Get user session
@@ -87,9 +86,8 @@ export async function POST(request: NextRequest) {
   
   try {
     // Initialize Supabase client with proper cookie handling
-    const cookieStore = cookies();
     const supabase = createRouteHandlerClient<Database>({ 
-      cookies: () => cookieStore 
+      cookies 
     });
     
     // Get user session
@@ -157,9 +155,8 @@ export async function DELETE(request: NextRequest) {
   
   try {
     // Initialize Supabase client with proper cookie handling
-    const cookieStore = cookies();
     const supabase = createRouteHandlerClient<Database>({ 
-      cookies: () => cookieStore 
+      cookies 
     });
     
     // Get user session

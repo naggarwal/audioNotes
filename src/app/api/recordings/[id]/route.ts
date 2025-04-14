@@ -17,11 +17,8 @@ export async function GET(
       return NextResponse.json({ error: 'Recording ID is required' }, { status: 400 });
     }
 
-    // Get cookie store
-    const cookieStore = cookies();
-    
     // Initialize Supabase client
-    const supabase = createRouteHandlerClient<Database>({ cookies: () => cookieStore });
+    const supabase = createRouteHandlerClient<Database>({ cookies });
     
     // Get the session
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();

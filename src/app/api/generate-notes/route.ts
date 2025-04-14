@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
     console.log('API route called: /api/generate-notes');
     
     // Initialize Supabase client for authentication
-    const supabase = createRouteHandlerClient({ cookies: () => cookies() });
+    const supabase = createRouteHandlerClient({ cookies });
     const { data: { session } } = await supabase.auth.getSession();
     
     // Check if user is authenticated

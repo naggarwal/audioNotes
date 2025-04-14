@@ -84,8 +84,7 @@ export async function POST(request: NextRequest) {
     console.log('API route called: /api/transcribe');
     
     // Initialize Supabase client for authentication
-    const cookiesStore = cookies();
-    const supabase = createRouteHandlerClient({ cookies: () => cookiesStore });
+    const supabase = createRouteHandlerClient({ cookies });
     const { data: { session } } = await supabase.auth.getSession();
     
     // Log session info for debugging
@@ -351,7 +350,7 @@ async function processWithDeepgram(
     if (recordingId) {
       try {
         // Get the user ID from the session
-        const supabase = createRouteHandlerClient({ cookies: () => cookies() });
+        const supabase = createRouteHandlerClient({ cookies });
         const { data: { session } } = await supabase.auth.getSession();
         const userId = session?.user?.id;
         
@@ -363,7 +362,7 @@ async function processWithDeepgram(
         
         // Store the transcription
         console.log(`[processWithDeepgram] Creating transcription for recording ${recordingId}`);
-        const authClient = createRouteHandlerClient({ cookies: () => cookies() });
+        const authClient = createRouteHandlerClient({ cookies });
         const transcription = await createTranscription(
           recordingId, 
           segments as TranscriptSegmentData[],
@@ -411,7 +410,7 @@ async function processWithDeepgram(
   if (recordingId) {
     try {
       // Get the user ID from the session
-      const supabase = createRouteHandlerClient({ cookies: () => cookies() });
+      const supabase = createRouteHandlerClient({ cookies });
       const { data: { session } } = await supabase.auth.getSession();
       const userId = session?.user?.id;
       
@@ -423,7 +422,7 @@ async function processWithDeepgram(
       
       // Store the transcription
       console.log(`[processWithDeepgram] Creating transcription for recording ${recordingId}`);
-      const authClient = createRouteHandlerClient({ cookies: () => cookies() });
+      const authClient = createRouteHandlerClient({ cookies });
       const transcription = await createTranscription(
         recordingId, 
         processedSegments,
@@ -510,7 +509,7 @@ async function processWithOpenAI(
   if (recordingId) {
     try {
       // Get the user ID from the session
-      const supabase = createRouteHandlerClient({ cookies: () => cookies() });
+      const supabase = createRouteHandlerClient({ cookies });
       const { data: { session } } = await supabase.auth.getSession();
       const userId = session?.user?.id;
       
@@ -522,7 +521,7 @@ async function processWithOpenAI(
       
       // Store the transcription
       console.log(`[processWithOpenAI] Creating transcription for recording ${recordingId}`);
-      const authClient = createRouteHandlerClient({ cookies: () => cookies() });
+      const authClient = createRouteHandlerClient({ cookies });
       const transcription = await createTranscription(
         recordingId, 
         processedSegments,

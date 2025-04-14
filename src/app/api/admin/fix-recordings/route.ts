@@ -5,7 +5,7 @@ import { cookies } from 'next/headers';
 export async function GET(request: NextRequest) {
   try {
     // Get the authenticated client
-    const supabase = createRouteHandlerClient({ cookies: () => cookies() });
+    const supabase = createRouteHandlerClient({ cookies });
     
     // Update the specific recording
     const { data, error } = await supabase

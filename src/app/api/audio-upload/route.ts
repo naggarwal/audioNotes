@@ -24,8 +24,8 @@ interface ExtendedBlobResult extends BlobResult {
 export async function POST(request: Request): Promise<NextResponse> {
   const body = await request.json();
   
-  // Create a Supabase client
-  const supabase = createRouteHandlerClient({ cookies: () => cookies() });
+  // Initialize Supabase client
+  const supabase = createRouteHandlerClient({ cookies });
   
   // Get the current user's session if authenticated
   const { data: { session } } = await supabase.auth.getSession();

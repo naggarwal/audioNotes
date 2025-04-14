@@ -15,7 +15,7 @@ export async function updateRecordingWithAuthClient(
   console.log(`[updateRecordingWithAuthClient] Attempting to update recording ${id} with:`, data);
   
   // Create a new authenticated client
-  const client = createRouteHandlerClient({ cookies: () => cookies() });
+  const client = createRouteHandlerClient({ cookies });
   
   // First verify the recording exists
   const { data: existingRecording, error: checkError } = await client
@@ -88,7 +88,7 @@ export async function saveMeetingNotesWithAuthClient(
     decisions: string[];
   }
 ) {
-  const supabase = createRouteHandlerClient<Database>({ cookies: () => cookies() });
+  const supabase = createRouteHandlerClient<Database>({ cookies });
 
   // Check if notes already exist for this recording
   const { data: existingNotes } = await supabase

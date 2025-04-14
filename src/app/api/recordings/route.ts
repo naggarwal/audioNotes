@@ -9,11 +9,8 @@ export async function GET(request: NextRequest) {
   
   try {
     // Initialize Supabase client with proper cookie handling
-    const cookieStore = cookies();
-    
-    // Pass the lambda function correctly - Next.js 14 needs it this way
     const supabase = createRouteHandlerClient<Database>({ 
-      cookies: () => cookieStore 
+      cookies 
     });
     
     // Get user session from cookies
