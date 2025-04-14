@@ -35,7 +35,7 @@ export default function Login() {
         return;
       }
       
-      // Successfully logged in, redirect to home
+      // Always redirect to home on successful login
       router.push('/');
     } catch (err) {
       setError('An unexpected error occurred');

@@ -59,9 +59,11 @@ export default function Navbar() {
             
             {user ? (
               <>
+                {/* Profile link commented out temporarily
                 <Link href="/profile" className="px-3 py-2 text-sm font-medium text-gray-700 hover:text-blue-600">
                   Profile
                 </Link>
+                */}
                 <button 
                   onClick={handleSignOut}
                   className="rounded-md bg-red-500 px-3 py-2 text-sm font-medium text-white hover:bg-red-600"
@@ -147,6 +149,7 @@ export default function Navbar() {
             
             {user ? (
               <>
+                {/* Mobile Profile link commented out temporarily
                 <Link
                   href="/profile"
                   onClick={() => setIsMenuOpen(false)}
@@ -154,6 +157,7 @@ export default function Navbar() {
                 >
                   Profile
                 </Link>
+                */}
                 <button
                   onClick={handleSignOut}
                   className="block w-full rounded-md bg-red-500 px-3 py-2 text-left text-base font-medium text-white hover:bg-red-600"
