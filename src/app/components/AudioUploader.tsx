@@ -164,6 +164,13 @@ export default function AudioUploader({ onFileUpload, isLoading, setUploadProgre
           const blobUpload = await upload(fileName, uploadedFile, {
             access: 'public',
             handleUploadUrl: '/api/audio-upload',
+            // Add user context in the payload as a JSON string
+            clientPayload: JSON.stringify({
+              userId: user?.id,
+              originalFileName: uploadedFile.name,
+              fileFormat: fileName.split('.').pop()?.toLowerCase() || '',
+              mimeType: uploadedFile.type
+            }),
             onUploadProgress: (progressEvent) => {
               const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
               setInternalUploadProgress(progress);
@@ -287,6 +294,13 @@ export default function AudioUploader({ onFileUpload, isLoading, setUploadProgre
         const blobUpload = await upload(fileName, selectedFile, {
           access: 'public',
           handleUploadUrl: '/api/audio-upload',
+          // Add user context in the payload as a JSON string
+          clientPayload: JSON.stringify({
+            userId: user?.id,
+            originalFileName: selectedFile.name,
+            fileFormat: fileName.split('.').pop()?.toLowerCase() || '',
+            mimeType: selectedFile.type
+          }),
           onUploadProgress: (progressEvent) => {
             const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
             setInternalUploadProgress(progress);
