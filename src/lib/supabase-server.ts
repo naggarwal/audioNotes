@@ -77,6 +77,31 @@ export async function updateRecordingWithAuthClient(
 }
 
 /**
+ * Creates a recording with authenticated client from server context
+ */
+export async function createRecordingWithAuthClient(data: Omit<Recording, 'id' | 'created_at' | 'updated_at'>) {
+  console.log(`[createRecordingWithAuthClient] Creating new recording with authenticated client`);
+  
+  // Create a new authenticated client
+  const client = createRouteHandlerClient<Database>({ cookies });
+  
+  // Insert the recording with the authenticated client
+  const result = await client
+    .from('recordings')
+    .insert(data)
+    .select()
+    .single();
+  
+  if (result.error) {
+    console.error(`[createRecordingWithAuthClient] Failed to create recording:`, result.error);
+  } else {
+    console.log(`[createRecordingWithAuthClient] Successfully created recording:`, result.data);
+  }
+  
+  return result;
+}
+
+/**
  * Creates or updates meeting notes for a recording using the authenticated client
  */
 export async function saveMeetingNotesWithAuthClient(

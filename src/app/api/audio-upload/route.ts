@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { createRecording } from '../../../lib/supabase';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
+import { createRecordingWithAuthClient } from '../../../lib/supabase-server';
 
 // Define custom interfaces for blob handling
 interface CustomUploadBody {
@@ -90,8 +91,8 @@ export async function POST(request: Request): Promise<NextResponse> {
           // Cast blob to extended type
           const extendedBlob = blob as unknown as ExtendedBlobResult;
           
-          // Store recording information in the database with user_id if available
-          await createRecording({
+          // Use the server-side function with authenticated client
+          await createRecordingWithAuthClient({
             file_name: extendedBlob.pathname,
             original_file_name: payload.originalFileName || extendedBlob.pathname,
             file_size_bytes: extendedBlob.size || 0,
@@ -107,7 +108,7 @@ export async function POST(request: Request): Promise<NextResponse> {
             },
           });
           
-          console.log('Recording stored in database');
+          console.log('Recording stored in database with authenticated client');
         } catch (error) {
           console.error('Error storing recording in database:', error);
         }
