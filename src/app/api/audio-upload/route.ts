@@ -2,7 +2,6 @@ import { handleUpload, type HandleUploadBody } from '@vercel/blob/client';
 import { NextResponse } from 'next/server';
 import { createRecording } from '../../../lib/supabase';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 
 // Define custom interfaces for blob handling
@@ -36,7 +35,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     const jsonResponse = await handleUpload({
       body: body as HandleUploadBody,
       request,
-      onBeforeGenerateToken: async (pathname, clientPayload) => {
+      onBeforeGenerateToken: async (pathname) => {
         // Get file extension and mime type from pathname
         const fileExtension = pathname.split('.').pop()?.toLowerCase() || '';
         
@@ -52,17 +51,6 @@ export async function POST(request: Request): Promise<NextResponse> {
           ogg: 'audio/ogg',
           mp4: 'audio/mp4',
         };
-        
-        // Parse client payload if available
-        let payloadData = {};
-        if (clientPayload) {
-          try {
-            payloadData = JSON.parse(clientPayload);
-            console.log('Client payload provided:', payloadData);
-          } catch (e) {
-            console.error('Error parsing client payload:', e);
-          }
-        }
         
         // Allowed audio formats
         const allowedContentTypes = [
@@ -84,10 +72,10 @@ export async function POST(request: Request): Promise<NextResponse> {
           maxSize: 250 * 1024 * 1024, // 250MB limit
           tokenPayload: JSON.stringify({
             fileName: pathname,
-            originalFileName: (payloadData as any).originalFileName || customBody.filename || pathname,
-            fileFormat: (payloadData as any).fileFormat || fileFormat,
-            mimeType: (payloadData as any).mimeType || mimeTypes[fileExtension] || null,
-            userId: (payloadData as any).userId || userId, // Prefer client payload userId, fall back to session
+            originalFileName: customBody.filename || pathname,
+            fileFormat,
+            mimeType: mimeTypes[fileExtension] || null,
+            userId, // Pass the user ID in the token payload
           }),
         };
       },
@@ -97,40 +85,13 @@ export async function POST(request: Request): Promise<NextResponse> {
         
         try {
           // Parse token payload
-          console.log('Parsing token payload:', tokenPayload);
           const payload = JSON.parse(tokenPayload || '{}');
-          console.log('Parsed payload:', payload);
-          
-          // Extract user ID from payload
-          const userIdFromPayload = payload.userId;
-          if (!userIdFromPayload) {
-            console.error('Missing userId in tokenPayload');
-            return;
-          }
-          
-          // Create a service role client for admin access (bypasses RLS)
-          const serviceRoleClient = createClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-            process.env.SUPABASE_SERVICE_ROLE_KEY || '',
-            { auth: { persistSession: false } }
-          );
           
           // Cast blob to extended type
           const extendedBlob = blob as unknown as ExtendedBlobResult;
           
-          // Log detailed information for debugging
-          console.log('Creating recording with data:', {
-            file_name: extendedBlob.pathname,
-            original_file_name: payload.originalFileName || extendedBlob.pathname,
-            file_size_bytes: extendedBlob.size || 0,
-            file_format: payload.fileFormat,
-            mime_type: extendedBlob.contentType || payload.mimeType,
-            storage_path: extendedBlob.url,
-            user_id: userIdFromPayload // Critical field
-          });
-          
           // Store recording information in the database with user_id if available
-          const result = await createRecording({
+          await createRecording({
             file_name: extendedBlob.pathname,
             original_file_name: payload.originalFileName || extendedBlob.pathname,
             file_size_bytes: extendedBlob.size || 0,
@@ -138,24 +99,17 @@ export async function POST(request: Request): Promise<NextResponse> {
             file_format: payload.fileFormat,
             mime_type: extendedBlob.contentType || payload.mimeType,
             storage_path: extendedBlob.url,
-            user_id: userIdFromPayload, // Use the user ID from payload
+            user_id: payload.userId, // Use the user ID from payload
             transcription_status: 'pending',
             metadata: {
               uploadedAt: new Date().toISOString(),
               blobId: extendedBlob.id,
             },
-          }, serviceRoleClient); // Pass the service role client to bypass RLS
+          });
           
-          console.log('Recording stored in database with result:', result);
+          console.log('Recording stored in database');
         } catch (error) {
           console.error('Error storing recording in database:', error);
-          // Log the detailed error for debugging
-          if (error instanceof Error) {
-            console.error('Error details:', {
-              message: error.message,
-              stack: error.stack
-            });
-          }
         }
       },
     });

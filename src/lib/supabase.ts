@@ -105,15 +105,8 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 /**
  * Inserts a new recording into the database
  */
-export async function createRecording(
-  data: Omit<Recording, 'id' | 'created_at' | 'updated_at'>, 
-  client?: any
-) {
-  console.log(`[createRecording] Using ${client ? 'provided client' : 'default supabase client'}`);
-  
-  const activeClient = client || supabase;
-  
-  return await activeClient
+export async function createRecording(data: Omit<Recording, 'id' | 'created_at' | 'updated_at'>) {
+  return await supabase
     .from('recordings')
     .insert(data)
     .select()
