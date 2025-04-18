@@ -15,6 +15,10 @@ let lastSessionFetch = 0;
 const SESSION_FETCH_DEBOUNCE = 2000; // Minimum 2 seconds between session fetches
 const AUTH_ACTION_DEBOUNCE = 2000; // Minimum 2 seconds between auth actions
 
+// Names of cache cookies used in middleware (must match middleware.ts)
+const SESSION_CACHE_COOKIE = 'sb-session-cache';
+const SESSION_EXPIRY_COOKIE = 'sb-session-expiry';
+
 type AuthContextType = {
   user: User | null;
   session: Session | null;
@@ -285,6 +289,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await supabaseBrowser.auth.signOut();
       setUser(null);
       setSession(null);
+      
+      // Clear session cache cookies
+      document.cookie = `${SESSION_CACHE_COOKIE}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax`;
+      document.cookie = `${SESSION_EXPIRY_COOKIE}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax`;
+      console.log('Session cache cookies cleared');
+      
       // Reset attempts on successful sign out as well
       setSignInAttempts(0);
       console.log('Sign out complete');

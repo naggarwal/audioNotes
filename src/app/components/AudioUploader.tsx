@@ -176,63 +176,61 @@ export default function AudioUploader({ onFileUpload, isLoading, setUploadProgre
           // Variable to store the recording ID if created
           let recordingId: string | undefined;
           
-          // Create a recording entry manually for development environments
-          if (window.location.hostname === 'localhost') {
-            try {
-              console.log('Creating recording entry manually for local development');
-              const fileExtension = fileName.split('.').pop()?.toLowerCase() || '';
-              
-              // Ensure we have a user before proceeding
-              if (!user?.id) {
-                throw new Error('Authentication required');
-              }
-              
-              // Map extensions to MIME types
-              const mimeTypes: Record<string, string> = {
-                mp3: 'audio/mpeg',
-                wav: 'audio/wav',
-                m4a: 'audio/x-m4a',
-                aac: 'audio/aac',
-                ogg: 'audio/ogg',
-                mp4: 'audio/mp4',
-              };
-              
-              const supabase = createClientComponentClient();
-              
-              const result = await supabase
-                .from('recordings')
-                .insert({
-                  file_name: blobUpload.pathname,
-                  original_file_name: fileName,
-                  file_size_bytes: uploadedFile.size,
-                  duration_seconds: null,
-                  file_format: fileExtension,
-                  mime_type: uploadedFile.type || mimeTypes[fileExtension] || null,
-                  storage_path: blobUpload.url,
-                  user_id: user.id, // Always require user_id
-                  transcription_status: 'pending',
-                  metadata: {
-                    uploadedAt: new Date().toISOString(),
-                    blobId: null,
-                    uploadedFromLocalDev: true
-                  },
-                })
-                .select()
-                .single();
-              
-              if (result.data) {
-                recordingId = result.data.id;
-                console.log('Recording entry created successfully for local development with ID:', recordingId);
-              } else if (result.error) {
-                console.error('Error creating recording entry:', result.error);
-                throw result.error;
-              }
-            } catch (error) {
-              console.error('Error creating recording entry for local development:', error);
-              setErrorMessage(error instanceof Error ? error.message : 'Authentication required');
-              setProcessingFile(false);
-              return;
+          // Create a recording entry for all environments, not just localhost
+          try {
+            console.log('Creating recording entry for', window.location.hostname);
+            const fileExtension = fileName.split('.').pop()?.toLowerCase() || '';
+            
+            // Ensure we have a user before proceeding
+            if (!user?.id) {
+              throw new Error('Authentication required');
             }
+            
+            // Map extensions to MIME types
+            const mimeTypes: Record<string, string> = {
+              mp3: 'audio/mpeg',
+              wav: 'audio/wav',
+              m4a: 'audio/x-m4a',
+              aac: 'audio/aac',
+              ogg: 'audio/ogg',
+              mp4: 'audio/mp4',
+            };
+            
+            const supabase = createClientComponentClient();
+            
+            const result = await supabase
+              .from('recordings')
+              .insert({
+                file_name: blobUpload.pathname,
+                original_file_name: fileName,
+                file_size_bytes: uploadedFile.size,
+                duration_seconds: null,
+                file_format: fileExtension,
+                mime_type: uploadedFile.type || mimeTypes[fileExtension] || null,
+                storage_path: blobUpload.url,
+                user_id: user.id, // Always require user_id
+                transcription_status: 'pending',
+                metadata: {
+                  uploadedAt: new Date().toISOString(),
+                  blobId: null,
+                  uploadedFromEnvironment: window.location.hostname
+                },
+              })
+              .select()
+              .single();
+            
+            if (result.data) {
+              recordingId = result.data.id;
+              console.log('Recording entry created successfully with ID:', recordingId);
+            } else if (result.error) {
+              console.error('Error creating recording entry:', result.error);
+              throw result.error;
+            }
+          } catch (error) {
+            console.error('Error creating recording entry:', error);
+            setErrorMessage(error instanceof Error ? error.message : 'Authentication required');
+            setProcessingFile(false);
+            return;
           }
           
           // Now process the file from the Blob URL
@@ -299,57 +297,55 @@ export default function AudioUploader({ onFileUpload, isLoading, setUploadProgre
         // Variable to store the recording ID if created
         let recordingId: string | undefined;
         
-        // Create a recording entry manually for development environments
-        if (window.location.hostname === 'localhost') {
-          try {
-            console.log('Creating recording entry manually for local development (Google Drive file)');
-            const fileExtension = fileName.split('.').pop()?.toLowerCase() || '';
-            
-            // Map extensions to MIME types
-            const mimeTypes: Record<string, string> = {
-              mp3: 'audio/mpeg',
-              wav: 'audio/wav',
-              m4a: 'audio/x-m4a',
-              aac: 'audio/aac',
-              ogg: 'audio/ogg',
-              mp4: 'audio/mp4',
-            };
-            
-            // Create an authenticated client
-            const supabase = createClientComponentClient();
-            
-            const result = await supabase
-              .from('recordings')
-              .insert({
-                file_name: blobUpload.pathname,
-                original_file_name: fileName,
-                file_size_bytes: selectedFile.size,
-                duration_seconds: null,
-                file_format: fileExtension,
-                mime_type: selectedFile.type || mimeTypes[fileExtension] || null,
-                storage_path: blobUpload.url,
-                user_id: user?.id || null,
-                transcription_status: 'pending',
-                metadata: {
-                  uploadedAt: new Date().toISOString(),
-                  blobId: null,
-                  uploadedFromLocalDev: true,
-                  source: 'google_drive'
-                },
-              })
-              .select()
-              .single();
-            
-            if (result.data) {
-              recordingId = result.data.id;
-              console.log('Recording entry created successfully for local development with ID:', recordingId);
-            } else if (result.error) {
-              console.error('Error creating recording entry:', result.error);
-              throw result.error;
-            }
-          } catch (error) {
-            console.error('Error creating recording entry for local development:', error);
+        // Create a recording entry for all environments, not just localhost
+        try {
+          console.log('Creating recording entry for', window.location.hostname);
+          const fileExtension = fileName.split('.').pop()?.toLowerCase() || '';
+          
+          // Map extensions to MIME types
+          const mimeTypes: Record<string, string> = {
+            mp3: 'audio/mpeg',
+            wav: 'audio/wav',
+            m4a: 'audio/x-m4a',
+            aac: 'audio/aac',
+            ogg: 'audio/ogg',
+            mp4: 'audio/mp4',
+          };
+          
+          // Create an authenticated client
+          const supabase = createClientComponentClient();
+          
+          const result = await supabase
+            .from('recordings')
+            .insert({
+              file_name: blobUpload.pathname,
+              original_file_name: fileName,
+              file_size_bytes: selectedFile.size,
+              duration_seconds: null,
+              file_format: fileExtension,
+              mime_type: selectedFile.type || mimeTypes[fileExtension] || null,
+              storage_path: blobUpload.url,
+              user_id: user?.id || null,
+              transcription_status: 'pending',
+              metadata: {
+                uploadedAt: new Date().toISOString(),
+                blobId: null,
+                uploadedFromEnvironment: window.location.hostname,
+                source: 'google_drive'
+              },
+            })
+            .select()
+            .single();
+          
+          if (result.data) {
+            recordingId = result.data.id;
+            console.log('Recording entry created successfully with ID:', recordingId);
+          } else if (result.error) {
+            console.error('Error creating recording entry:', result.error);
+            throw result.error;
           }
+        } catch (error) {
+          console.error('Error creating recording entry:', error);
         }
         
         // Now process the file from the Blob URL
